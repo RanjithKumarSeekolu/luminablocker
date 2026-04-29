@@ -1,0 +1,47 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="expo.modules.luminablocker" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+6
+7    <queries>
+7-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:2:3-7:13
+8        <intent>
+8-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:3:5-6:14
+9            <action android:name="android.intent.action.MAIN" />
+9-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:4:7-59
+9-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:4:15-56
+10
+11            <category android:name="android.intent.category.LAUNCHER" />
+11-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:5:7-67
+11-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:5:17-64
+12        </intent>
+13    </queries>
+14
+15    <application>
+15-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:9:3-25:17
+16        <service
+16-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:11:5-23:15
+17            android:name="expo.modules.luminablocker.LuminaAccessibilityService"
+17-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:12:7-75
+18            android:exported="false"
+18-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:14:7-31
+19            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
+19-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:13:7-73
+20            <intent-filter>
+20-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:16:7-18:23
+21                <action android:name="android.accessibilityservice.AccessibilityService" />
+21-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:17:9-84
+21-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:17:17-81
+22            </intent-filter>
+23
+24            <meta-data
+24-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:20:7-22:63
+25                android:name="android.accessibilityservice"
+25-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:21:9-52
+26                android:resource="@xml/lumina_accessibility_config" />
+26-->/Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:22:9-60
+27        </service>
+28    </application>
+29
+30</manifest>

@@ -1,0 +1,1 @@
+int xml lumina_accessibility_config 0x0

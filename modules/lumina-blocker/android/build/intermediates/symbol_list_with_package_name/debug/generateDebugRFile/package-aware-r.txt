@@ -1,0 +1,2 @@
+expo.modules.luminablocker
+xml lumina_accessibility_config
