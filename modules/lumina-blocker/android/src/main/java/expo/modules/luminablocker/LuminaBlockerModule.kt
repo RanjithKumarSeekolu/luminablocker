@@ -32,14 +32,13 @@ class LuminaBlockerModule : Module() {
 
     // Check if Accessibility Service is enabled
     Function("isAccessibilityEnabled") {
-      val ctx = appContext.reactContext ?: return@Function false
-
-      val enabled = Settings.Secure.getString(
-        ctx.contentResolver,
-        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-      ) ?: ""
-
-      enabled.contains(ctx.packageName, ignoreCase = true)
+        val ctx = appContext.reactContext ?: return@Function false
+        val expectedComponent = "${ctx.packageName}/${LuminaAccessibilityService::class.java.name}"
+        val enabled = Settings.Secure.getString(
+            ctx.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: ""
+        enabled.split(":").any { it.equals(expectedComponent, ignoreCase = true) }
     }
 
     // Open Android Accessibility Settings

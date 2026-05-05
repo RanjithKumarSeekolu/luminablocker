@@ -1,2 +1,5 @@
 expo.modules.luminablocker
+id appName
+id btnContinue
+layout breath_overlay
 xml lumina_accessibility_config

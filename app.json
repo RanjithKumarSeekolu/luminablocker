@@ -1,7 +1,6 @@
 {
   "expo": {
     "name": "LuminaBlocker",
-    "plugins": ["./modules/lumina-blocker/plugin.js"],
     "slug": "LuminaBlocker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,7 +30,11 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": ["expo-router", "expo-font"],
+    "plugins": [
+      "./modules/lumina-blocker/plugin.js",
+      "expo-router",
+      "expo-font"
+    ],
     "experiments": {
       "typedRoutes": true
     }

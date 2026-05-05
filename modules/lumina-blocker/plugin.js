@@ -4,6 +4,10 @@ module.exports = function withLuminaBlocker(config) {
   return withAndroidManifest(config, (config) => {
     const manifest = config.modResults.manifest;
 
+    if (!manifest.$["xmlns:tools"]) {
+      manifest.$["xmlns:tools"] = "http://schemas.android.com/tools";
+    }
+
     // Add permissions
     manifest["uses-permission"] = manifest["uses-permission"] ?? [];
     const perms = [
@@ -53,6 +57,21 @@ module.exports = function withLuminaBlocker(config) {
               },
             },
           ],
+        });
+      }
+
+      // ── BreathOverlayActivity (NEW) ────────────────────────────────
+      app.activity = app.activity ?? [];
+      const overlayName = "expo.modules.luminablocker.BreathOverlayActivity";
+      if (!app.activity.some((a) => a.$?.["android:name"] === overlayName)) {
+        app.activity.push({
+          $: {
+            "android:name": overlayName,
+            "android:theme": "@android:style/Theme.Black.NoTitleBar.Fullscreen",
+            "android:exported": "false",
+            "android:launchMode": "singleTop",
+            "android:excludeFromRecents": "true",
+          },
         });
       }
     }
