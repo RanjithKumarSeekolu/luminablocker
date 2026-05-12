@@ -22,6 +22,16 @@ type LuminaBlockerEvents = {
 
 const emitter = new EventEmitter<LuminaBlockerEvents>(LuminaBlocker);
 
+export type ScoreHistoryEvent = {
+  timestamp: number;
+  packageName: string;
+  appName: string;
+  reason: string;
+  delta: number;
+  previousScore: number;
+  newScore: number;
+};
+
 // ── Blocked apps ──────────────────────────────────────────────
 
 /** Persist the list of package names to block. */
@@ -154,4 +164,12 @@ export function addBlockedAppListener(
   callback: (event: BlockedAppEvent) => void,
 ) {
   return emitter.addListener("onBlockedAppDetected", callback);
+}
+
+export function getHistory(): ScoreHistoryEvent[] {
+  return LuminaBlocker.getHistory();
+}
+
+export function clearHistory(): void {
+  return LuminaBlocker.clearHistory();
 }

@@ -66,6 +66,9 @@ object SessionTracker {
         }
     }
 
+    fun getLastActivePackage(ctx: Context): String =
+    prefs(ctx).getString(KEY_LAST_ACTIVE_PACKAGE, "") ?: ""
+
     // ── App left foreground ──────────────────────────────────────
 
     /**
@@ -160,6 +163,16 @@ object SessionTracker {
             val current = getStoredScore(ctx)
             val reduced = (current - LuminaConfig.Reset.PARTIAL_RESET_SCORE).coerceAtLeast(0)
             setStoredScore(ctx, reduced)
+            HistoryTracker.addEvent(
+                ctx,
+                "",
+                "Lumina",
+                "Recovery",
+                "You stayed away from distracting apps for 30 minutes.",
+                -LuminaConfig.Reset.PARTIAL_RESET_SCORE,
+                current,
+                reduced
+            )
             // Clear so we don't double-apply on the next open
             prefs.edit().putLong(KEY_LAST_LEAVE_TIME, 0L).apply()
         }

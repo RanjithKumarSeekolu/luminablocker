@@ -12,7 +12,7 @@ import {
   saveBlockedApps,
   type InstalledApp,
 } from "@/modules/lumina-blocker";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -91,11 +91,24 @@ function ScoreStrip({ score, level, onFocusReset }: ScoreStripProps) {
       {/* Top row: label + focus reset button */}
       <View style={styles.scoreStripHeader}>
         <Text style={styles.scoreLabel}>Intensity score</Text>
-        {score > 0 && (
-          <TouchableOpacity style={styles.focusResetBtn} onPress={onFocusReset}>
-            <Text style={styles.focusResetText}>I'll focus now −4</Text>
+
+        <View style={styles.scoreActions}>
+          <TouchableOpacity
+            style={styles.historyBtn}
+            onPress={() => router.push("/history")}
+          >
+            <Text style={styles.historyBtnText}>History</Text>
           </TouchableOpacity>
-        )}
+
+          {score > 0 && (
+            <TouchableOpacity
+              style={styles.focusResetBtn}
+              onPress={onFocusReset}
+            >
+              <Text style={styles.focusResetText}>I'll focus now −4</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Score + level badge row */}
@@ -624,6 +637,27 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: "#e8f0eb",
     fontSize: 15,
+    fontFamily: "DMSans_600SemiBold",
+  },
+
+  scoreActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  historyBtn: {
+    backgroundColor: "#0e1412",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#2a4a38",
+  },
+
+  historyBtnText: {
+    fontSize: 11,
+    color: "#7ab89a",
     fontFamily: "DMSans_600SemiBold",
   },
 });

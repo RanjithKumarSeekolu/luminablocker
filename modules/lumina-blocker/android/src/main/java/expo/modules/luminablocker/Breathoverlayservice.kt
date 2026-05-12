@@ -623,6 +623,36 @@ class BreathOverlayService : Service() {
 
         Log.d(TAG, "❌ User cancelled")
 
+        val currentScore =
+            SessionTracker.getStoredScore(this)
+
+        val appName = try {
+
+            val info =
+                packageManager.getApplicationInfo(
+                    blockedPackage,
+                    0
+                )
+
+            packageManager
+                .getApplicationLabel(info)
+                .toString()
+
+        } catch (e: Exception) {
+            blockedPackage
+        }
+
+        HistoryTracker.addEvent(
+            this,
+            blockedPackage,
+            appName,
+            "Intentional exit",
+            "You chose not to open $appName.",
+            0,
+            currentScore,
+            currentScore
+        )
+
         prefs().edit()
             .putBoolean("breathScreenActive", false)
             .remove("allowedPackage")
@@ -639,7 +669,6 @@ class BreathOverlayService : Service() {
 
         startActivity(homeIntent)
     }
-
     // ─────────────────────────────────────────────────────────────
     // Breathing Animation
     // ─────────────────────────────────────────────────────────────

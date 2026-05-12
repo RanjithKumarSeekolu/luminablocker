@@ -26,16 +26,125 @@ object ScoreEngine {
      * Applies resets, computes score delta, persists, returns level.
      */
     fun evaluate(ctx: Context): Int {
-        // 1. Apply resets before scoring so today's first open benefits from overnight recovery
+
+        // Apply recovery resets first
         SessionTracker.applyDailyResetIfNeeded(ctx)
         SessionTracker.applyNoUseResetIfNeeded(ctx)
 
-        // 2. Compute fresh score
-        val delta    = usageTimeScore(ctx) + frequencyScore(ctx) +
-                       reopenGapScore(ctx) + timeContextScore()
-        val newScore = (SessionTracker.getStoredScore(ctx) + delta).coerceAtLeast(0)
+        // Individual signal deltas
+        val usageDelta = usageTimeScore(ctx)
+        val frequencyDelta = frequencyScore(ctx)
+        val reopenDelta = reopenGapScore(ctx)
+        val timeDelta = timeContextScore()
 
-        // 3. Persist
+        val totalDelta =
+            usageDelta +
+            frequencyDelta +
+            reopenDelta +
+            timeDelta
+
+        val previousScore =
+            SessionTracker.getStoredScore(ctx)
+
+        val newScore =
+            (previousScore + totalDelta).coerceAtLeast(0)
+
+        // Current package
+        val packageName =
+            SessionTracker.getLastActivePackage(ctx)
+
+        // Human-readable app name
+        val appLabel = try {
+
+            val info =
+                ctx.packageManager.getApplicationInfo(
+                    packageName,
+                    0
+                )
+
+            ctx.packageManager
+                .getApplicationLabel(info)
+                .toString()
+
+        } catch (e: Exception) {
+            packageName
+        }
+
+        // ─────────────────────────────────────────────────────────
+        // History Events
+        // ─────────────────────────────────────────────────────────
+
+        if (usageDelta > 0) {
+
+            val mins =
+                SessionTracker.getLastSessionDurationMs(ctx) / 60_000L
+
+            HistoryTracker.addEvent(
+                ctx,
+                packageName,
+                appLabel,
+                "Extended session",
+                "You spent $mins minutes in $appLabel during your last session.",
+                usageDelta,
+                previousScore,
+                previousScore + usageDelta
+            )
+        }
+
+        // Frequency
+        if (frequencyDelta > 0) {
+
+            val opens =
+                SessionTracker.getOpenCountThisHour(ctx)
+
+            HistoryTracker.addEvent(
+                ctx,
+                packageName,
+                appLabel,
+                "Frequent checking",
+                "You opened $appLabel $opens times within the last hour.",
+                frequencyDelta,
+                previousScore,
+                previousScore + frequencyDelta
+            )
+        }
+
+        // Reopen gap
+        if (reopenDelta > 0) {
+
+            val gapSeconds =
+                SessionTracker.getReopenGapMs(ctx) / 1000L
+
+            HistoryTracker.addEvent(
+                ctx,
+                packageName,
+                appLabel,
+                "Quick return",
+                "You reopened $appLabel within $gapSeconds seconds.",
+                reopenDelta,
+                previousScore,
+                previousScore + reopenDelta
+            )
+        }
+
+        // Late-night usage
+        if (timeDelta > 0) {
+
+            val hour = SessionTracker.getCurrentHour()
+
+            HistoryTracker.addEvent(
+                ctx,
+                packageName,
+                appLabel,
+                "Late-night usage",
+                "You opened $appLabel around ${formatHour(hour)}.",
+                timeDelta,
+                previousScore,
+                previousScore + timeDelta
+            )
+        }
+
+        // Persist score
         SessionTracker.setStoredScore(ctx, newScore)
 
         return scoreToLevel(newScore)
@@ -127,5 +236,18 @@ object ScoreEngine {
         3    -> LuminaConfig.Levels.LEVEL_3_COUNTDOWN_MS
         4    -> LuminaConfig.Levels.LEVEL_4_COUNTDOWN_MS
         else -> LuminaConfig.Levels.LEVEL_1_COUNTDOWN_MS
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    private fun formatHour(hour: Int): String {
+
+        return when {
+
+            hour == 0 -> "12 AM"
+            hour < 12 -> "$hour AM"
+            hour == 12 -> "12 PM"
+            else -> "${hour - 12} PM"
+        }
     }
 }

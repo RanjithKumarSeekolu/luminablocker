@@ -14,9 +14,9 @@ object LuminaConfig {
 
     // ── Frequency thresholds (opens within rolling 1-hour window) ─
     object Frequency {
-        const val TIER_1_OPENS = 10     // 3+ opens/hr → +1
-        const val TIER_2_OPENS = 20    // 5+ opens/hr → +2
-        const val TIER_3_OPENS = 30     // 7+ opens/hr → +3
+        const val TIER_1_OPENS = 10   // 3+ opens/hr → +1
+        const val TIER_2_OPENS = 25    // 5+ opens/hr → +2
+        const val TIER_3_OPENS = 40     // 7+ opens/hr → +3
         const val SCORE_TIER_1 = 1
         const val SCORE_TIER_2 = 2
         const val SCORE_TIER_3 = 3
@@ -25,9 +25,10 @@ object LuminaConfig {
     // ── Reopen gap thresholds (time away since last close) ────────
     // Short gap = compulsive checking = higher score
     object ReopenGap {
-        const val TIER_1_MAX_MS = 5  * 60 * 1000L   // back within 5 min  → +1
-        const val TIER_2_MAX_MS = 2  * 60 * 1000L   // back within 2 min  → +2
-        const val TIER_3_MAX_MS = 30 * 1000L         // back within 30 sec → +3
+
+        const val TIER_1_MAX_MS = 12 * 1000L        // 12 sec → +1
+        const val TIER_2_MAX_MS = 10 * 1000L       // 8 sec → +2
+        const val TIER_3_MAX_MS = 5 * 1000L       // 5 sec → +3
         const val SCORE_TIER_1  = 1
         const val SCORE_TIER_2  = 2
         const val SCORE_TIER_3  = 3
@@ -51,12 +52,13 @@ object LuminaConfig {
     // Score 8–10  → Level 3 (focused, 10 s countdown)
     // Score 11+   → Level 4 (deep,    15 s countdown)
     object Levels {
-        const val LEVEL_1_MIN = 1
-        const val LEVEL_2_MIN = 5
-        const val LEVEL_3_MIN = 8
-        const val LEVEL_4_MIN = 11
 
-        const val LEVEL_1_COUNTDOWN_MS = 0L          // instant open
+        const val LEVEL_1_MIN = 3
+        const val LEVEL_2_MIN = 10
+        const val LEVEL_3_MIN = 18
+        const val LEVEL_4_MIN = 28
+
+        const val LEVEL_1_COUNTDOWN_MS = 0L
         const val LEVEL_2_COUNTDOWN_MS = 5_000L
         const val LEVEL_3_COUNTDOWN_MS = 10_000L
         const val LEVEL_4_COUNTDOWN_MS = 15_000L

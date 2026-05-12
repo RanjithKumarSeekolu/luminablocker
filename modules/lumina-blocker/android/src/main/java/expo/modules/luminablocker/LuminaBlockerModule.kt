@@ -63,6 +63,16 @@ class LuminaBlockerModule : Module() {
             val current = SessionTracker.getStoredScore(ctx)
             val reduced = (current - LuminaConfig.Reset.FOCUS_RESET_SCORE).coerceAtLeast(0)
             SessionTracker.setStoredScore(ctx, reduced)
+            HistoryTracker.addEvent(
+                ctx,
+                "",
+                "Lumina",
+                "Mindful pause",
+                "You chose to pause and reduce your intensity score.",
+                -LuminaConfig.Reset.FOCUS_RESET_SCORE,
+                current,
+                reduced
+            )
             reduced
         }
 
@@ -153,6 +163,15 @@ class LuminaBlockerModule : Module() {
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             ) ?: ""
             enabled.split(":").any { it.equals(expected, ignoreCase = true) }
+        }
+
+        Function("getHistory") {
+            HistoryTracker.getEvents(ctx)
+        }
+
+        Function("clearHistory") {
+            HistoryTracker.clear(ctx)
+            null
         }
 
         Function("openAccessibilitySettings") {
