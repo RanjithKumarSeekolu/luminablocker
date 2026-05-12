@@ -1,6 +1,5 @@
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { Link } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -155,11 +154,6 @@ export default function Luminabreath() {
                 {"YOUR WELLBEING IS\nA PRIORITY"}
               </Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn}>
-              <Link href="/breathdelay" asChild>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </Link>
-            </TouchableOpacity>
           </View>
         </View>
       </LinearGradient>

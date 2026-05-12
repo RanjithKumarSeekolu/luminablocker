@@ -68,7 +68,8 @@ module.exports = function withLuminaBlocker(config) {
           $: {
             "android:name": overlayName,
             "android:theme": "@android:style/Theme.Black.NoTitleBar.Fullscreen",
-            "android:exported": "false",
+            "android:exported": "true",
+            "tools:replace": "android:exported",
             "android:launchMode": "singleTop",
             "android:excludeFromRecents": "true",
           },

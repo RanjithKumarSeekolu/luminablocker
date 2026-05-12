@@ -7,10 +7,9 @@ import android.view.accessibility.AccessibilityEvent
 
 class LuminaAccessibilityService : AccessibilityService() {
 
+    // In-memory foreground tracking (not persisted — resets if service restarts)
     private var lastForegroundPackage = ""
-    private var lastForegroundTime = 0L
-    // Only skip duplicate events within 2 seconds
-    private val DUPLICATE_WINDOW_MS = 2000L
+    private var lastForegroundTime    = 0L
 
     companion object {
         const val TAG = "LuminaService"
@@ -23,69 +22,136 @@ class LuminaAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+
         val packageName = event.packageName?.toString() ?: return
 
+        // Ignore our own app
         if (packageName == applicationContext.packageName) return
 
-        val prefs = getSharedPreferences("LuminaPrefs", Context.MODE_PRIVATE)
-        val blockedApps = prefs.getStringSet("blockedApps", emptySet())?.toSet() ?: return
-        if (packageName !in blockedApps) return
+        val ctx   = applicationContext
+        val prefs = ctx.getSharedPreferences("LuminaPrefs", Context.MODE_PRIVATE)
+        val now   = System.currentTimeMillis()
 
-        val now = System.currentTimeMillis()
-        val isActive = prefs.getBoolean("breathScreenActive", false)
+        val blockedApps = prefs.getStringSet("blockedApps", emptySet())?.toSet() ?: emptySet()
 
-        if (!isActive && packageName == lastForegroundPackage) {
-            lastForegroundPackage = ""
-            lastForegroundTime = 0L
+        // ── Detect when a blocked app leaves foreground ───────────
+        // Fires whenever ANY different package comes to foreground after a blocked app.
+        // This covers: home screen, another app, notification shade, etc.
+        if (lastForegroundPackage.isNotEmpty() &&
+            lastForegroundPackage != packageName &&
+            lastForegroundPackage in blockedApps
+        ) {
+            Log.d(TAG, "📴 Left foreground: $lastForegroundPackage → $packageName")
+            SessionTracker.onAppLeft(ctx)
+
+            prefs.edit()
+            .remove("allowedPackage")
+            .remove("allowedTime")
+            .apply()
         }
 
-        if (packageName == lastForegroundPackage && now - lastForegroundTime < DUPLICATE_WINDOW_MS) {
-            Log.d(TAG, "⏭ Duplicate event within ${now - lastForegroundTime}ms, skipping")
-            return
-        }
+        // ── Always update foreground tracking ─────────────────────
+        // Must happen for ALL packages (including non-blocked) so the close
+        // detection above works correctly next time a blocked app opens.
+        val prevForeground = lastForegroundPackage
+        val prevForegroundTime = lastForegroundTime
 
         lastForegroundPackage = packageName
         lastForegroundTime = now
 
-        if (isActive) {
-            Log.d(TAG, "🫁 Breath screen already active, skipping")
+        // ── Not a monitored app — nothing else to do ──────────────
+        if (packageName !in blockedApps) return
+
+        // ── Deduplicate rapid events for the same package ─────────
+        if (
+            packageName == prevForeground &&
+            now - prevForegroundTime < LuminaConfig.Windows.DUPLICATE_MS
+        ) {
+            Log.d(
+                TAG,
+                "⏭ Duplicate event ${now - prevForegroundTime}ms, skipping"
+            )
             return
         }
 
-        // Allow window
-        val allowedPackage = prefs.getString("allowedPackage", "")
-        val allowedTime = prefs.getLong("allowedTime", 0L)
-        val allowedAge = now - allowedTime
+        // ── Breath screen already showing ─────────────────────────
+        // val breathActive = prefs.getBoolean("breathScreenActive", false)
+        // if (breathActive) {
+        //     Log.d(TAG, "🫁 Breath screen already active, skipping")
+        //     return
+        // }
 
-        if (!allowedPackage.isNullOrEmpty() && packageName == allowedPackage && allowedAge < 8000L) {
-            Log.d(TAG, "🟢 Within allow window (${allowedAge}ms), passing through")
+        // ── Allow window — active session pass-through ────────────
+        // Set when user taps "Open". Refreshed on every in-app navigation event
+        // so the overlay never fires during an active session.
+        val allowedPackage = prefs.getString("allowedPackage", "") ?: ""
+        val allowedTime    = prefs.getLong("allowedTime", 0L)
+        val allowedAge     = now - allowedTime
+
+        if (allowedPackage == packageName && allowedAge < LuminaConfig.Windows.ALLOW_WINDOW_MS) {
+            // Refresh the window — user is still actively inside the app
+            // prefs.edit().putLong("allowedTime", now).apply()
+            Log.d(TAG, "🟢 Session active — refreshed allow window (was ${allowedAge}ms old)")
             return
         }
 
-        if (!allowedPackage.isNullOrEmpty() && allowedAge >= 8000L) {
+        // Allow window expired — clear it
+        if (allowedPackage.isNotEmpty() && allowedAge >= LuminaConfig.Windows.ALLOW_WINDOW_MS) {
+            Log.d(TAG, "⌛ Allow window expired (${allowedAge}ms) — clearing")
             prefs.edit().remove("allowedPackage").remove("allowedTime").apply()
         }
 
-        // Cancel cooldown
-        val cancelledPackage = prefs.getString("cancelledPackage", "")
-        val cancelledTime = prefs.getLong("cancelledTime", 0L)
-        val cancelledAge = now - cancelledTime
+        // ── Track open + compute score ────────────────────────────
+        SessionTracker.onAppOpened(ctx, packageName)
 
-        if (!cancelledPackage.isNullOrEmpty() && packageName == cancelledPackage && cancelledAge < 30000L) {
-            Log.d(TAG, "⏳ Within cancel cooldown (${cancelledAge}ms), skipping")
+        val level = ScoreEngine.evaluate(ctx)
+        val score = SessionTracker.getStoredScore(ctx)
+
+        Log.d(TAG, "📊 Score: $score → Level: $level")
+
+        // ── Score 0 → no intervention needed ─────────────────────
+        if (level == 0) {
+            Log.d(TAG, "✅ Score too low for overlay — passing through")
+            // Still set a short allow window so in-app events don't re-evaluate
+            prefs.edit()
+                .putString("allowedPackage", packageName)
+                .putLong("allowedTime", now)
+                .apply()
             return
         }
 
-        if (!cancelledPackage.isNullOrEmpty() && cancelledAge >= 30000L) {
-            prefs.edit().remove("cancelledPackage").remove("cancelledTime").apply()
-        }
+        // ── Show overlay ──────────────────────────────────────────
+        val countdownMs = ScoreEngine.levelToCountdownMs(level)
+        val appLabel    = getAppLabel(packageName)
 
-        Log.d(TAG, "🫁 Showing breath screen for: $packageName")
+        Log.d(TAG, "🫁 Showing overlay for $packageName — level $level, countdown ${countdownMs}ms")
+
         prefs.edit().putBoolean("breathScreenActive", true).apply()
-        BreathOverlayActivity.start(applicationContext, packageName)
+
+        // Draw system window overlay on top of the blocked app.
+        // The blocked app stays in the foreground underneath — no app switching.
+        BreathOverlayService.start(ctx, packageName, level, countdownMs)
+
+        // Also emit to JS so the React side can update stats/UI if needed
+        LuminaBlockerModule.emitEvent(
+            "onBlockedAppDetected",
+            mapOf(
+                "packageName" to packageName,
+                "appName"     to appLabel,
+                "level"       to level,
+                "score"       to score
+            )
+        )
     }
 
     override fun onInterrupt() {
         Log.d(TAG, "⚠️ Service interrupted")
+    }
+
+    private fun getAppLabel(packageName: String): String = try {
+        val info = packageManager.getApplicationInfo(packageName, 0)
+        packageManager.getApplicationLabel(info).toString()
+    } catch (e: Exception) {
+        packageName
     }
 }

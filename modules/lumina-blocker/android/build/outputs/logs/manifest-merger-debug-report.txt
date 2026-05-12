@@ -1,49 +1,63 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:2:1-27:12
-INJECTED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:2:1-27:12
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:2:1-72:12
+INJECTED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:2:1-72:12
 	package
 		INJECTED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml
 	xmlns:tools
 		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:3:5-51
 	xmlns:android
 		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.SYSTEM_ALERT_WINDOW
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:11:3-76
+	android:name
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:11:20-73
+uses-permission#android.permission.FOREGROUND_SERVICE
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:17:3-75
+	android:name
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:17:20-72
 queries
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:5:3-10:13
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:23:3-28:13
 intent#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:6:5-9:14
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:24:5-27:14
 action#android.intent.action.MAIN
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:7:7-59
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:25:7-59
 	android:name
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:7:15-56
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:25:15-56
 category#android.intent.category.LAUNCHER
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:8:7-67
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:26:7-67
 	android:name
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:8:17-64
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:26:17-64
 application
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:12:3-25:17
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:30:3-70:17
 service#expo.modules.luminablocker.LuminaAccessibilityService
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:13:5-24:15
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:36:5-47:15
 	android:exported
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:16:9-32
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:39:9-32
 	android:permission
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:15:9-75
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:38:9-75
 	tools:replace
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:17:9-41
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:40:9-41
 	android:name
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:14:9-77
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:37:9-77
 intent-filter#action:name:android.accessibilityservice.AccessibilityService
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:18:7-20:23
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:41:7-43:23
 action#android.accessibilityservice.AccessibilityService
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:19:9-84
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:42:9-84
 	android:name
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:19:17-81
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:42:17-81
 meta-data#android.accessibilityservice
-ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:21:7-23:65
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:44:7-46:65
 	android:resource
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:23:11-62
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:46:11-62
 	android:name
-		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:22:11-54
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:45:11-54
+service#expo.modules.luminablocker.BreathOverlayService
+ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:54:5-56:36
+	android:exported
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:56:9-33
+	android:name
+		ADDED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml:55:9-71
 uses-sdk
 INJECTED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /Users/ranjiths_500376/Documents/Personal/Personal Files/Personal_Files/projects/DevSync/modules/lumina-blocker/android/src/main/AndroidManifest.xml
