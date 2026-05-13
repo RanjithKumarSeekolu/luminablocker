@@ -26,9 +26,9 @@ object LuminaConfig {
     // Short gap = compulsive checking = higher score
     object ReopenGap {
 
-        const val TIER_1_MAX_MS = 12 * 1000L        // 12 sec → +1
-        const val TIER_2_MAX_MS = 10 * 1000L       // 8 sec → +2
-        const val TIER_3_MAX_MS = 5 * 1000L       // 5 sec → +3
+        const val TIER_1_MAX_MS = 9 * 1000L        // 9 sec → +1
+        const val TIER_2_MAX_MS = 7 * 1000L       // 7 sec → +2
+        const val TIER_3_MAX_MS = 4 * 1000L       // 4 sec → +3
         const val SCORE_TIER_1  = 1
         const val SCORE_TIER_2  = 2
         const val SCORE_TIER_3  = 3
@@ -53,9 +53,9 @@ object LuminaConfig {
     // Score 11+   → Level 4 (deep,    15 s countdown)
     object Levels {
 
-        const val LEVEL_1_MIN = 3
-        const val LEVEL_2_MIN = 10
-        const val LEVEL_3_MIN = 18
+        const val LEVEL_1_MIN = 7
+        const val LEVEL_2_MIN = 14
+        const val LEVEL_3_MIN = 21
         const val LEVEL_4_MIN = 28
 
         const val LEVEL_1_COUNTDOWN_MS = 0L
