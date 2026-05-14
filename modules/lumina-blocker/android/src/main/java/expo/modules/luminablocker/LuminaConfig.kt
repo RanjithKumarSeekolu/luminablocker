@@ -85,4 +85,26 @@ object LuminaConfig {
         const val DUPLICATE_MS     = 2_000L    // dedupe rapid accessibility events
         // No cancel cooldown — cancel = go back, next open gets a fresh overlay
     }
+
+    object UsageBuckets {
+        // Morning → 5 AM – 12 PM
+        const val MORNING_START = 5
+        const val MORNING_END   = 12
+
+        // Afternoon → 12 PM – 5 PM
+        const val AFTERNOON_START = 12
+        const val AFTERNOON_END   = 17
+
+        // Evening → 5 PM – 9 PM
+        const val EVENING_START = 17
+        const val EVENING_END   = 21
+
+        // Night → 9 PM – 5 AM
+        // Everything outside above ranges becomes night
+
+        const val MORNING  = "morning"
+        const val AFTERNOON = "afternoon"
+        const val EVENING  = "evening"
+        const val NIGHT    = "night"
+    }
 }

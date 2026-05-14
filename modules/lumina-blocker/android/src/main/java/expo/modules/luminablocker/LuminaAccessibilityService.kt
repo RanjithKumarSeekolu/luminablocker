@@ -104,8 +104,8 @@ class LuminaAccessibilityService : AccessibilityService() {
         // ── Track open + compute score ────────────────────────────
         SessionTracker.onAppOpened(ctx, packageName)
 
-        val level = ScoreEngine.evaluate(ctx)
-        val score = SessionTracker.getStoredScore(ctx)
+        val level = ScoreEngine.evaluate(ctx, packageName)
+        val score = SessionTracker.getStoredScore(ctx, packageName)
 
         Log.d(TAG, "📊 Score: $score → Level: $level")
 

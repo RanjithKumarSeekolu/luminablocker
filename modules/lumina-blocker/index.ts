@@ -47,13 +47,13 @@ export function getBlockedApps(): string[] {
 // ── Score + level ─────────────────────────────────────────────
 
 /** Raw cumulative score — useful for debugging or displaying progress. */
-export function getCurrentScore(): number {
-  return LuminaBlocker.getCurrentScore();
+export function getCurrentScore(packageName: string): number {
+  return LuminaBlocker.getCurrentScore(packageName);
 }
 
 /** Derived level (0 = no overlay, 1–4 = increasing intervention). */
-export function getCurrentLevel(): number {
-  return LuminaBlocker.getCurrentLevel();
+export function getCurrentLevel(packageName: string): number {
+  return LuminaBlocker.getCurrentLevel(packageName);
 }
 
 /** Hard-reset score to 0 (e.g. from a settings screen). */
@@ -96,6 +96,10 @@ export function allowApp(packageName: string): void {
 /** Mark as cancelled — clears breathScreenActive, no cooldown penalty. */
 export function cancelApp(packageName: string): void {
   return LuminaBlocker.cancelApp(packageName);
+}
+
+export function getAllAppScores() {
+  return LuminaBlocker.getAllAppScores();
 }
 
 // ── Installed apps ────────────────────────────────────────────

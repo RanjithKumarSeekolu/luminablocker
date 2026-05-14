@@ -52,7 +52,6 @@ export default function HistoryScreen() {
       </View>
     );
   };
-  console.log("events = ", events);
 
   return (
     <View style={styles.container}>

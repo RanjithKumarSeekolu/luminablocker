@@ -31,6 +31,15 @@ object SessionTracker {
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    private fun scoreKey(packageName: String) =
+    "score_$packageName"
+
+    private fun usageKey(packageName: String) =
+    "usage_$packageName"
+
+    private fun bucketUsageKey( packageName: String, bucket: String) =
+    "usage_${packageName}_$bucket"
+
     // ── App opened ───────────────────────────────────────────────
 
     /**
@@ -76,18 +85,281 @@ object SessionTracker {
      * Saves the completed session duration so ScoreEngine can use it on the NEXT open.
      */
     fun onAppLeft(ctx: Context) {
+
         val prefs = prefs(ctx)
-        val now   = System.currentTimeMillis()
-        val start = prefs.getLong(KEY_SESSION_START, 0L)
+
+        val now =
+            System.currentTimeMillis()
+
+        val start =
+            prefs.getLong(
+                KEY_SESSION_START,
+                0L
+            )
 
         // Only save if a session was actually running
-        val sessionDuration = if (start > 0L) now - start else 0L
+
+        val sessionDuration =
+            if (start > 0L)
+                now - start
+            else
+                0L
+
+        val packageName =
+            getLastActivePackage(ctx)
+
+        if (
+            packageName.isNotBlank() &&
+            sessionDuration > 0
+        ) {
+
+            // ── Total usage ─────────────────────────
+
+            val currentTotal =
+                getTotalUsageMs(
+                    ctx,
+                    packageName
+                )
+
+            val updatedTotal =
+                currentTotal +
+                    sessionDuration
+
+            // ── Time bucket usage ───────────────────
+
+            val bucket =
+                currentTimeBucket()
+
+            val bucketKey =
+                bucketUsageKey(
+                    packageName,
+                    bucket
+                )
+
+            val currentBucketUsage =
+                prefs.getLong(
+                    bucketKey,
+                    0L
+                )
+
+            val updatedBucketUsage =
+                currentBucketUsage +
+                    sessionDuration
+
+            // ── Persist usage ───────────────────────
+
+            prefs.edit()
+
+                // total usage
+                .putLong(
+                    usageKey(packageName),
+                    updatedTotal
+                )
+
+                // morning / afternoon / evening / night
+                .putLong(
+                    bucketKey,
+                    updatedBucketUsage
+                )
+
+                .apply()
+        }
+
+        // ── Save session metadata ──────────────────
 
         prefs.edit()
-            .putLong(KEY_LAST_SESSION_DURATION, sessionDuration)
-            .putLong(KEY_LAST_LEAVE_TIME, now)
-            .putLong(KEY_SESSION_START, 0L)           // reset session timer
+
+            .putLong(
+                KEY_LAST_SESSION_DURATION,
+                sessionDuration
+            )
+
+            .putLong(
+                KEY_LAST_LEAVE_TIME,
+                now
+            )
+
+            .putLong(
+                KEY_SESSION_START,
+                0L
+            )
+
+            // reset session timer
+
             .apply()
+    }
+
+    fun getTotalUsageMs(
+        ctx: Context,
+        packageName: String
+    ): Long {
+
+        return prefs(ctx).getLong(
+            usageKey(packageName),
+            0L
+        )
+    }
+
+    private fun currentTimeBucket(): String {
+
+        val hour =
+            Calendar.getInstance()
+                .get(Calendar.HOUR_OF_DAY)
+
+        return when {
+
+            hour >= LuminaConfig
+                .UsageBuckets
+                .MORNING_START &&
+
+            hour <
+                LuminaConfig
+                    .UsageBuckets
+                    .MORNING_END ->
+
+                LuminaConfig
+                    .UsageBuckets
+                    .MORNING
+
+
+            hour >= LuminaConfig
+                .UsageBuckets
+                .AFTERNOON_START &&
+
+            hour <
+                LuminaConfig
+                    .UsageBuckets
+                    .AFTERNOON_END ->
+
+                LuminaConfig
+                    .UsageBuckets
+                    .AFTERNOON
+
+
+            hour >= LuminaConfig
+                .UsageBuckets
+                .EVENING_START &&
+
+            hour <
+                LuminaConfig
+                    .UsageBuckets
+                    .EVENING_END ->
+
+                LuminaConfig
+                    .UsageBuckets
+                    .EVENING
+
+
+            else ->
+                LuminaConfig
+                    .UsageBuckets
+                    .NIGHT
+        }
+    }
+    
+    fun getUsageBreakdown( ctx: Context, packageName: String ): Map<String, Long> {
+
+        val prefs = prefs(ctx)
+
+        return mapOf(
+            "morning" to prefs.getLong(
+                bucketUsageKey(
+                    packageName,
+                    "morning"
+                ),
+                0L
+            ),
+
+            "afternoon" to prefs.getLong(
+                bucketUsageKey(
+                    packageName,
+                    "afternoon"
+                ),
+                0L
+            ),
+
+            "evening" to prefs.getLong(
+                bucketUsageKey(
+                    packageName,
+                    "evening"
+                ),
+                0L
+            ),
+
+            "night" to prefs.getLong(
+                bucketUsageKey(
+                    packageName,
+                    "night"
+                ),
+                0L
+            )
+        )
+    }
+
+    fun getAllAppScores(ctx: Context): List<Map<String, Any>> {
+
+        val prefs = prefs(ctx)
+
+        val all = prefs.all
+
+        val result =
+            mutableListOf<Map<String, Any>>()
+
+        for ((key, value) in all) {
+
+            if (!key.startsWith("score_")) {
+                continue
+            }
+
+            val packageName =
+                key.removePrefix("score_")
+
+            val score =
+                value as? Int ?: 0
+
+            if (score <= 0) {
+                continue
+            }
+
+            val appName = try {
+
+                val info =
+                    ctx.packageManager
+                        .getApplicationInfo(
+                            packageName,
+                            0
+                        )
+
+                ctx.packageManager
+                    .getApplicationLabel(info)
+                    .toString()
+
+            } catch (e: Exception) {
+                packageName
+            }
+
+            result.add(
+                mapOf(
+                    "packageName" to packageName,
+                    "appName" to appName,
+                    "score" to score,
+                    "level" to ScoreEngine
+                        .scoreToLevel(score),
+                    "usageMs" to getTotalUsageMs(
+                        ctx,
+                        packageName
+                    ),
+                    "usageBreakdown" to getUsageBreakdown(
+                        ctx,
+                        packageName
+                    )
+                )
+            )
+        }
+
+        return result.sortedByDescending {
+            it["score"] as Int
+        }
     }
 
     // ── Getters for ScoreEngine ──────────────────────────────────
@@ -116,11 +388,11 @@ object SessionTracker {
 
     // ── Score persistence ────────────────────────────────────────
 
-    fun getStoredScore(ctx: Context): Int =
-        prefs(ctx).getInt(KEY_CURRENT_SCORE, 0)
+    fun getStoredScore(ctx: Context, packageName: String): Int =
+        prefs(ctx).getInt(scoreKey(packageName), 0)
 
-    fun setStoredScore(ctx: Context, score: Int) {
-        prefs(ctx).edit().putInt(KEY_CURRENT_SCORE, score).apply()
+    fun setStoredScore(ctx: Context, packageName: String, score: Int) {
+        prefs(ctx).edit().putInt(scoreKey(packageName), score).apply()
     }
 
     // ── Daily soft-reset ─────────────────────────────────────────
@@ -130,16 +402,16 @@ object SessionTracker {
      * Yesterday's heavy usage still slightly elevates today's first open,
      * but doesn't carry full penalty into a new day.
      */
-    fun applyDailyResetIfNeeded(ctx: Context) {
+    fun applyDailyResetIfNeeded(ctx: Context, packageName: String) {
         val prefs   = prefs(ctx)
         val today   = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
         val lastDay = prefs.getInt(KEY_LAST_RESET_DAY, -1)
 
         if (today != lastDay) {
-            val current = getStoredScore(ctx)
+            val current = getStoredScore(ctx, packageName)
             val capped  = minOf(current, LuminaConfig.Reset.NEW_DAY_SCORE_CAP)
             prefs.edit()
-                .putInt(KEY_CURRENT_SCORE, capped)
+                .putInt(scoreKey(packageName), capped)
                 .putInt(KEY_LAST_RESET_DAY, today)
                 .apply()
         }
@@ -151,7 +423,7 @@ object SessionTracker {
      * If the user has been away for ≥ 30 min, subtract PARTIAL_RESET_SCORE.
      * Only applied once per away period (lastLeaveTime is cleared after applying).
      */
-    fun applyNoUseResetIfNeeded(ctx: Context) {
+    fun applyNoUseResetIfNeeded(ctx: Context, packageName: String) {
         val prefs     = prefs(ctx)
         val lastLeave = prefs.getLong(KEY_LAST_LEAVE_TIME, 0L)
 
@@ -160,9 +432,9 @@ object SessionTracker {
         val awayMs = System.currentTimeMillis() - lastLeave
 
         if (awayMs >= LuminaConfig.Reset.NO_USE_WINDOW_MS) {
-            val current = getStoredScore(ctx)
+            val current = getStoredScore(ctx, packageName)
             val reduced = (current - LuminaConfig.Reset.PARTIAL_RESET_SCORE).coerceAtLeast(0)
-            setStoredScore(ctx, reduced)
+            setStoredScore(ctx, packageName ,reduced)
             HistoryTracker.addEvent(
                 ctx,
                 "",

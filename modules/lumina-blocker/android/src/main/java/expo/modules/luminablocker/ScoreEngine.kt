@@ -25,11 +25,11 @@ object ScoreEngine {
      * Call once per open attempt (after SessionTracker.onAppOpened).
      * Applies resets, computes score delta, persists, returns level.
      */
-    fun evaluate(ctx: Context): Int {
+    fun evaluate(ctx: Context, packageName: String): Int {
 
         // Apply recovery resets first
-        SessionTracker.applyDailyResetIfNeeded(ctx)
-        SessionTracker.applyNoUseResetIfNeeded(ctx)
+        SessionTracker.applyDailyResetIfNeeded(ctx, packageName)
+        SessionTracker.applyNoUseResetIfNeeded(ctx, packageName)
 
         // Individual signal deltas
         val usageDelta = usageTimeScore(ctx)
@@ -44,7 +44,7 @@ object ScoreEngine {
             timeDelta
 
         val previousScore =
-            SessionTracker.getStoredScore(ctx)
+            SessionTracker.getStoredScore(ctx, packageName)
 
         val newScore =
             (previousScore + totalDelta).coerceAtLeast(0)
@@ -145,7 +145,7 @@ object ScoreEngine {
         }
 
         // Persist score
-        SessionTracker.setStoredScore(ctx, newScore)
+        SessionTracker.setStoredScore(ctx, packageName, newScore)
 
         return scoreToLevel(newScore)
     }

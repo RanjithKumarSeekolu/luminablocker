@@ -45,24 +45,28 @@ class LuminaBlockerModule : Module() {
 
         // ── Score + level ─────────────────────────────────────────
 
-        Function("getCurrentScore") {
-            SessionTracker.getStoredScore(ctx)
+        Function("getCurrentScore") { packageName: String ->
+            SessionTracker.getStoredScore(ctx, packageName)
         }
 
-        Function("getCurrentLevel") {
-            val score = SessionTracker.getStoredScore(ctx)
+        Function("getCurrentLevel") { packageName: String ->
+            val score = SessionTracker.getStoredScore(ctx, packageName)
             ScoreEngine.scoreToLevel(score)
         }
 
-        Function("resetScore") {
-            SessionTracker.setStoredScore(ctx, 0)
+        Function("getAllAppScores") {
+            SessionTracker.getAllAppScores(appContext.reactContext!!)
+        }
+
+        Function("resetScore") { packageName: String ->
+            SessionTracker.setStoredScore(ctx, packageName, 0)
             null
         }
 
-        Function("applyFocusReset") {
-            val current = SessionTracker.getStoredScore(ctx)
+        Function("applyFocusReset") { packageName: String ->
+            val current = SessionTracker.getStoredScore(ctx, packageName)
             val reduced = (current - LuminaConfig.Reset.FOCUS_RESET_SCORE).coerceAtLeast(0)
-            SessionTracker.setStoredScore(ctx, reduced)
+            SessionTracker.setStoredScore(ctx, packageName ,reduced)
             HistoryTracker.addEvent(
                 ctx,
                 "",

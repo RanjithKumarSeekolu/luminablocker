@@ -624,7 +624,7 @@ class BreathOverlayService : Service() {
         Log.d(TAG, "❌ User cancelled")
 
         val currentScore =
-            SessionTracker.getStoredScore(this)
+            SessionTracker.getStoredScore(this, blockedPackage)
 
         val appName = try {
 
