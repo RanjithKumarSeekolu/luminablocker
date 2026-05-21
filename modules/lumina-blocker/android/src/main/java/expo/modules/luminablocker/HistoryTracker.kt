@@ -55,6 +55,103 @@ object HistoryTracker {
             .apply()
     }
 
+    fun clearAppHistory(
+        ctx: Context,
+        packageName: String
+    ) {
+
+        val prefs = prefs(ctx)
+
+        val existing =
+            prefs.getString(
+                KEY_EVENTS,
+                "[]"
+            ) ?: "[]"
+
+        val array =
+            JSONArray(existing)
+
+        val filtered =
+            JSONArray()
+
+        for (i in 0 until array.length()) {
+
+            val obj =
+                array.getJSONObject(i)
+
+            if (
+                obj.getString("packageName")
+                != packageName
+            ) {
+
+                filtered.put(obj)
+            }
+        }
+
+        prefs.edit()
+            .putString(
+                KEY_EVENTS,
+                filtered.toString()
+            )
+            .apply()
+    }
+
+    fun getHistory(
+        ctx: Context
+    ): List<HistoryEvent> {
+
+        val json =
+            prefs(ctx).getString(
+                KEY_EVENTS,
+                "[]"
+            ) ?: "[]"
+
+        val array =
+            JSONArray(json)
+
+        val result =
+            mutableListOf<HistoryEvent>()
+
+        for (i in 0 until array.length()) {
+
+            val obj =
+                array.getJSONObject(i)
+
+            result.add(
+                HistoryEvent(
+                    timestamp =
+                        obj.getLong("timestamp"),
+
+                    packageName =
+                        obj.getString("packageName"),
+
+                    appName =
+                        obj.getString("appName"),
+
+                    reason =
+                        obj.getString("reason"),
+
+                    details =
+                        obj.optString(
+                            "details",
+                            ""
+                        ),
+
+                    delta =
+                        obj.getInt("delta"),
+
+                    previousScore =
+                        obj.getInt("previousScore"),
+
+                    newScore =
+                        obj.getInt("newScore")
+                )
+            )
+        }
+
+        return result
+    }
+
     fun getEvents(ctx: Context): List<Map<String, Any>> {
 
         val prefs = prefs(ctx)

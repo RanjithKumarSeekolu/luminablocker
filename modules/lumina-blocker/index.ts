@@ -102,6 +102,26 @@ export function getAllAppScores() {
   return LuminaBlocker.getAllAppScores();
 }
 
+export function hasUsagePermission(): boolean {
+  return LuminaBlocker.hasUsagePermission();
+}
+
+export function openUsageAccessSettings() {
+  LuminaBlocker.openUsageAccessSettings();
+}
+
+export function getAppDailySnapshots() {
+  return JSON.parse(LuminaBlocker.getAppDailySnapshots());
+}
+
+export function getWeeklyUsageForApp(packageName: string) {
+  return LuminaBlocker.getWeeklyUsageForApp(packageName);
+}
+
+export function clearAppData(packageName: string) {
+  return LuminaBlocker.clearAppData(packageName);
+}
+
 // ── Installed apps ────────────────────────────────────────────
 
 /** Returns all launchable apps installed on the device, sorted by label. */
@@ -135,6 +155,12 @@ export function openOverlaySettings(): void {
  */
 export function stopOverlay(): void {
   return LuminaBlocker.stopOverlay();
+}
+
+// ── Daily snapshots ───────────────────────────────────────────
+// Returns an array of daily snapshots for the past week, including today.
+export function getDailySnapshots() {
+  return JSON.parse(LuminaBlocker.getDailySnapshots());
 }
 
 // ── Accessibility ─────────────────────────────────────────────

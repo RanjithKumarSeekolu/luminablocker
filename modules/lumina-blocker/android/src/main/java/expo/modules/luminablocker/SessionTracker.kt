@@ -3,6 +3,9 @@ package expo.modules.luminablocker
 import android.content.Context
 import java.util.Calendar
 
+import org.json.JSONArray
+import org.json.JSONObject
+
 /**
  * Tracks per-app usage: session timing, open frequency, reopen gaps, and score.
  *
@@ -27,6 +30,10 @@ object SessionTracker {
     private const val KEY_CURRENT_SCORE          = "currentScore"
     private const val KEY_LAST_RESET_DAY         = "lastResetDay"
     private const val KEY_LAST_ACTIVE_PACKAGE    = "lastActivePackage"
+    
+    private const val KEY_DAILY_SNAPSHOTS = "daily_snapshots"
+    private const val KEY_LAST_SNAPSHOT_DATE = "last_snapshot_date"
+    private const val KEY_APP_DAILY_SNAPSHOTS = "app_daily_snapshots"
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -40,6 +47,644 @@ object SessionTracker {
     private fun bucketUsageKey( packageName: String, bucket: String) =
     "usage_${packageName}_$bucket"
 
+    private fun lastOpenKey( packageName: String) =
+    "last_open_$packageName"
+
+    private fun allowUntilKey(packageName: String) =
+    "allow_until_$packageName"
+
+    private fun frequencyKey(packageName: String) =
+    "frequency_$packageName"
+
+
+    // --store daily snapshot of all scores for historical graphing in the future (not yet implemented)--
+
+    fun clearAppData(
+        ctx: Context,
+        packageName: String
+    ) {
+
+        val prefs = prefs(ctx)
+
+        val keysToRemove = listOf(
+
+            scoreKey(packageName),
+
+            usageKey(packageName),
+
+            bucketUsageKey(
+                packageName,
+                LuminaConfig
+                    .UsageBuckets
+                    .MORNING
+            ),
+
+            bucketUsageKey(
+                packageName,
+                LuminaConfig
+                    .UsageBuckets
+                    .AFTERNOON
+            ),
+
+            bucketUsageKey(
+                packageName,
+                LuminaConfig
+                    .UsageBuckets
+                    .EVENING
+            ),
+
+            bucketUsageKey(
+                packageName,
+                LuminaConfig
+                    .UsageBuckets
+                    .NIGHT
+            ),
+
+            frequencyKey(packageName),
+
+            lastOpenKey(packageName),
+
+            allowUntilKey(packageName)
+        )
+
+        val editor =
+            prefs.edit()
+
+        keysToRemove.forEach {
+            editor.remove(it)
+        }
+
+        editor.apply()
+
+        clearAppSnapshots(
+            ctx,
+            packageName
+        )
+
+        HistoryTracker.clearAppHistory(
+            ctx,
+            packageName
+        )
+    }
+
+    private fun clearAppSnapshots(
+        ctx: Context,
+        packageName: String
+    ) {
+
+        val prefs = prefs(ctx)
+
+        val existing =
+            prefs.getString(
+                KEY_APP_DAILY_SNAPSHOTS,
+                "[]"
+            ) ?: "[]"
+
+        val array =
+            JSONArray(existing)
+
+        val filtered =
+            JSONArray()
+
+        for (i in 0 until array.length()) {
+
+            val obj =
+                array.getJSONObject(i)
+
+            if (
+                obj.getString("packageName")
+                != packageName
+            ) {
+
+                filtered.put(obj)
+            }
+        }
+
+        prefs.edit()
+            .putString(
+                KEY_APP_DAILY_SNAPSHOTS,
+                filtered.toString()
+            )
+            .apply()
+    }
+
+    private fun todayKey(): String {
+        val calendar = java.util.Calendar.getInstance()
+
+        val year =
+            calendar.get(java.util.Calendar.YEAR)
+
+        val month =
+            calendar.get(java.util.Calendar.MONTH) + 1
+
+        val day =
+            calendar.get(java.util.Calendar.DAY_OF_MONTH)
+
+        return "$year-$month-$day"
+    }
+
+    private fun getTotalUsageForBucket(
+        ctx: Context,
+        bucket: String
+    ): Long {
+
+        val prefs = prefs(ctx)
+
+        return prefs.all
+            .filterKeys {
+                it.startsWith("usage_") &&
+                it.endsWith("_$bucket")
+            }
+            .values
+            .sumOf {
+                (it as? Long) ?: 0L
+            }
+    }
+
+    private fun countHistoryReason(
+        ctx: Context,
+        reason: String
+    ): Int {
+
+        return HistoryTracker
+            .getHistory(ctx)
+            .count {
+                it.reason == reason
+            }
+    }
+
+    private fun saveSnapshot(
+        ctx: Context,
+        snapshot: DailyBalanceSnapshot
+    ) {
+
+        val prefs = prefs(ctx)
+
+        val existing =
+            prefs.getString(
+                KEY_DAILY_SNAPSHOTS,
+                "[]"
+            ) ?: "[]"
+
+        val array =
+            JSONArray(existing)
+
+        val obj =
+            JSONObject().apply {
+
+                put(
+                    "date",
+                    snapshot.date
+                )
+
+                put(
+                    "totalUsageMs",
+                    snapshot.totalUsageMs
+                )
+
+                put(
+                    "morningUsageMs",
+                    snapshot.morningUsageMs
+                )
+
+                put(
+                    "afternoonUsageMs",
+                    snapshot.afternoonUsageMs
+                )
+
+                put(
+                    "eveningUsageMs",
+                    snapshot.eveningUsageMs
+                )
+
+                put(
+                    "nightUsageMs",
+                    snapshot.nightUsageMs
+                )
+
+                put(
+                    "reopenEvents",
+                    snapshot.reopenEvents
+                )
+
+                put(
+                    "intentionalExits",
+                    snapshot.intentionalExits
+                )
+
+                put(
+                    "focusResets",
+                    snapshot.focusResets
+                )
+
+                put(
+                    "overlaysTriggered",
+                    snapshot.overlaysTriggered
+                )
+            }
+
+        array.put(obj)
+
+        prefs.edit()
+            .putString(
+                KEY_DAILY_SNAPSHOTS,
+                array.toString()
+            )
+            .apply()
+    }
+
+    fun getDailySnapshots(
+        ctx: Context
+    ): String {
+
+        return prefs(ctx).getString(
+            KEY_DAILY_SNAPSHOTS,
+            "[]"
+        ) ?: "[]"
+    }
+
+    private fun saveAppDailySnapshot(
+        ctx: Context,
+        snapshot: AppDailySnapshot
+    ) {
+
+        val prefs = prefs(ctx)
+
+        val existing =
+            prefs.getString(
+                KEY_APP_DAILY_SNAPSHOTS,
+                "[]"
+            ) ?: "[]"
+
+        val array =
+            JSONArray(existing)
+
+        val obj =
+            JSONObject().apply {
+
+                put(
+                    "date",
+                    snapshot.date
+                )
+
+                put(
+                    "packageName",
+                    snapshot.packageName
+                )
+
+                put(
+                    "appName",
+                    snapshot.appName
+                )
+
+                put(
+                    "usageMs",
+                    snapshot.usageMs
+                )
+
+                put(
+                    "morningUsageMs",
+                    snapshot.morningUsageMs
+                )
+
+                put(
+                    "afternoonUsageMs",
+                    snapshot.afternoonUsageMs
+                )
+
+                put(
+                    "eveningUsageMs",
+                    snapshot.eveningUsageMs
+                )
+
+                put(
+                    "nightUsageMs",
+                    snapshot.nightUsageMs
+                )
+
+                put(
+                    "score",
+                    snapshot.score
+                )
+
+                put(
+                    "level",
+                    snapshot.level
+                )
+            }
+
+        var replaced = false
+
+        for (i in 0 until array.length()) {
+
+            val existingObj =
+                array.getJSONObject(i)
+
+            val sameDate =
+                existingObj.getString("date") ==
+                    snapshot.date
+
+            val samePackage =
+                existingObj.getString("packageName") ==
+                    snapshot.packageName
+
+            if (
+                sameDate &&
+                samePackage
+            ) {
+
+                // Replace existing snapshot
+                array.put(i, obj)
+
+                replaced = true
+
+                break
+            }
+        }
+
+        // Add new snapshot only if not already present
+        if (!replaced) {
+            array.put(obj)
+        }
+
+        prefs.edit()
+            .putString(
+                KEY_APP_DAILY_SNAPSHOTS,
+                array.toString()
+            )
+            .apply()
+    }
+
+    fun getAppDailySnapshots(
+        ctx: Context
+    ): String {
+
+        return prefs(ctx).getString(
+            KEY_APP_DAILY_SNAPSHOTS,
+            "[]"
+        ) ?: "[]"
+    }
+
+    fun generateDailySnapshotIfNeeded(ctx: Context) {
+
+        val prefs = prefs(ctx)
+
+        val today =
+            todayKey()
+
+        val lastSnapshotDate =
+            prefs.getString(
+                KEY_LAST_SNAPSHOT_DATE,
+                null
+            )
+
+        // already generated today
+
+        if (today == lastSnapshotDate) {
+            return
+        }
+
+        // ── Total usage across all apps ─────────────────────
+
+        // ── Total usage ONLY for tracked / blocked apps ─────────────────────
+
+        val blockedApps =
+            prefs(ctx)
+                .all
+                .keys
+                .filter {
+                    it.startsWith("score_")
+                }
+                .map {
+                    it.removePrefix("score_")
+                }
+
+                val totalUsageMs =
+                    blockedApps.sumOf { packageName ->
+
+                        getTotalUsageMs(
+                            ctx,
+                            packageName
+                        )
+                    }
+
+                // ── Usage buckets ───────────────────────────────────
+
+                val morningUsageMs =
+                    getTotalUsageForBucket(
+                        ctx,
+                        LuminaConfig
+                            .UsageBuckets
+                            .MORNING
+                    )
+
+                val afternoonUsageMs =
+                    getTotalUsageForBucket(
+                        ctx,
+                        LuminaConfig
+                            .UsageBuckets
+                            .AFTERNOON
+                    )
+
+                val eveningUsageMs =
+                    getTotalUsageForBucket(
+                        ctx,
+                        LuminaConfig
+                            .UsageBuckets
+                            .EVENING
+                    )
+
+                val nightUsageMs =
+                    getTotalUsageForBucket(
+                        ctx,
+                        LuminaConfig
+                            .UsageBuckets
+                            .NIGHT
+                    )
+
+                // ── Behavioral events ───────────────────────────────
+
+                val reopenEvents =
+                    countHistoryReason(
+                        ctx,
+                        "Quick reopen detected"
+                    )
+
+                val intentionalExits =
+                    countHistoryReason(
+                        ctx,
+                        "Intentional exit"
+                    )
+
+                val focusResets =
+                    countHistoryReason(
+                        ctx,
+                        "Focus reset"
+                    )
+
+                val overlaysTriggered =
+                    HistoryTracker
+                        .getHistory(ctx)
+                        .size
+
+                // ── Snapshot model ──────────────────────────────────
+
+                val snapshot =
+                    DailyBalanceSnapshot(
+
+                        date = today,
+
+                        totalUsageMs =
+                            totalUsageMs,
+
+                        morningUsageMs =
+                            morningUsageMs,
+
+                        afternoonUsageMs =
+                            afternoonUsageMs,
+
+                        eveningUsageMs =
+                            eveningUsageMs,
+
+                        nightUsageMs =
+                            nightUsageMs,
+
+                        reopenEvents =
+                            reopenEvents,
+
+                        intentionalExits =
+                            intentionalExits,
+
+                        focusResets =
+                            focusResets,
+
+                        overlaysTriggered =
+                            overlaysTriggered
+                    )
+
+                // ── Persist snapshot ────────────────────────────────
+
+                saveSnapshot(
+                    ctx,
+                    snapshot
+                )
+
+        val trackedApps =
+            prefs(ctx)
+                .all
+                .keys
+                .filter {
+                    it.startsWith("score_")
+                }
+                .map {
+                    it.removePrefix("score_")
+                }
+
+        trackedApps.forEach { packageName ->
+
+            val usageMs =
+                UsageStatsHelper
+                    .getTodayUsageForApp(
+                        ctx,
+                        packageName
+                    )
+
+            val breakdown =
+                UsageStatsHelper
+                    .getTodayUsageBreakdown(
+                        ctx,
+                        packageName
+                    )
+
+            val score =
+                getStoredScore(
+                    ctx,
+                    packageName
+                )
+
+            val level =
+                ScoreEngine
+                    .scoreToLevel(score)
+
+            val appName = try {
+
+                val info =
+                    ctx.packageManager
+                        .getApplicationInfo(
+                            packageName,
+                            0
+                        )
+
+                ctx.packageManager
+                    .getApplicationLabel(info)
+                    .toString()
+
+            } catch (e: Exception) {
+
+                packageName
+            }
+
+            val snapshot =
+                AppDailySnapshot(
+
+                    date = today,
+
+                    packageName =
+                        packageName,
+
+                    appName =
+                        appName,
+
+                    usageMs =
+                        usageMs,
+
+                    morningUsageMs =
+                        breakdown[
+                            LuminaConfig
+                                .UsageBuckets
+                                .MORNING
+                        ] ?: 0L,
+
+                    afternoonUsageMs =
+                        breakdown[
+                            LuminaConfig
+                                .UsageBuckets
+                                .AFTERNOON
+                        ] ?: 0L,
+
+                    eveningUsageMs =
+                        breakdown[
+                            LuminaConfig
+                                .UsageBuckets
+                                .EVENING
+                        ] ?: 0L,
+
+                    nightUsageMs =
+                        breakdown[
+                            LuminaConfig
+                                .UsageBuckets
+                                .NIGHT
+                        ] ?: 0L,
+
+                    score = score,
+
+                    level = level
+                )
+
+            saveAppDailySnapshot(
+                ctx,
+                snapshot
+            )
+        }
+
+        prefs.edit()
+            .putString(
+                KEY_LAST_SNAPSHOT_DATE,
+                today
+            )
+            .apply()
+    }
+    
     // ── App opened ───────────────────────────────────────────────
 
     /**
@@ -48,6 +693,7 @@ object SessionTracker {
      * Increments the rolling-hour open counter.
      */
     fun onAppOpened(ctx: Context, packageName: String) {
+        generateDailySnapshotIfNeeded(ctx)
         val prefs = prefs(ctx)
         val now   = System.currentTimeMillis()
 
@@ -345,11 +991,12 @@ object SessionTracker {
                     "score" to score,
                     "level" to ScoreEngine
                         .scoreToLevel(score),
-                    "usageMs" to getTotalUsageMs(
+                    "usageMs" to UsageStatsHelper
+                    .getTodayUsageForApp(
                         ctx,
                         packageName
                     ),
-                    "usageBreakdown" to getUsageBreakdown(
+                    "usageBreakdown" to UsageStatsHelper.getTodayUsageBreakdown(
                         ctx,
                         packageName
                     )

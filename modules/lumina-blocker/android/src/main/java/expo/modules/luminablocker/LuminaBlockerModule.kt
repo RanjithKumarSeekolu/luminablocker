@@ -43,6 +43,68 @@ class LuminaBlockerModule : Module() {
                 ?.toList() ?: emptyList<String>()
         }
 
+        // --─ Daily snapshots ────────────────────────────────────────
+        Function("getDailySnapshots") {
+
+            SessionTracker.getDailySnapshots(
+                appContext.reactContext!!
+            )
+        }
+
+        Function("hasUsagePermission") {
+            UsageStatsHelper.hasUsagePermission(ctx)
+        }
+
+        Function("hasUsagePermission") {
+
+            UsageStatsHelper.hasUsagePermission(
+                appContext.reactContext!!
+            )
+        }
+
+        Function("getAppDailySnapshots") {
+
+            SessionTracker.getAppDailySnapshots(
+                appContext.reactContext!!
+            )
+        }
+
+        Function("getWeeklyUsageForApp") { packageName: String ->
+
+            UsageStatsHelper
+                .getWeeklyUsageForApp(
+                    appContext.reactContext!!,
+                    packageName
+                )
+        }
+        
+        Function("clearAppData") {
+            packageName: String ->
+
+            SessionTracker
+                .clearAppData(
+                    appContext.reactContext!!,
+                    packageName
+                )
+        }
+
+        Function("openUsageAccessSettings") {
+
+            val intent =
+                Intent(
+                    Settings.ACTION_USAGE_ACCESS_SETTINGS
+                ).apply {
+
+                    flags =
+                        Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+
+            appContext.reactContext
+                ?.startActivity(intent)
+
+            null
+        }
+
         // ── Score + level ─────────────────────────────────────────
 
         Function("getCurrentScore") { packageName: String ->

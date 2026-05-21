@@ -1,34 +1,47 @@
+import DailyStatsCard, { DailySnapshot } from "@/components/DailyStatsCard";
+
 import {
   addBlockedAppListener,
   canDrawOverlays,
+  clearAppData,
   getAllAppScores,
   getBlockedApps,
+  getDailySnapshots,
   getInstalledApps,
+  getWeeklyUsageForApp,
+  hasUsagePermission,
   isAccessibilityEnabled,
   openAccessibilitySettings,
   openOverlaySettings,
+  openUsageAccessSettings,
   saveBlockedApps,
   type InstalledApp,
 } from "@/modules/lumina-blocker";
+
 import { router, useFocusEffect } from "expo-router";
+
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import {
   Animated,
   AppState,
   AppStateStatus,
-  FlatList,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
-// ── Level helpers ──────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
 const LEVEL_COLORS = ["#4a9a6a", "#6a9a3a", "#9a8a2a", "#9a5a2a"] as const;
 
 const LEVEL_LABELS = ["GENTLE", "MODERATE", "FOCUSED", "DEEP PAUSE"] as const;
+
+const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function levelColor(level: number) {
   return LEVEL_COLORS[Math.max(0, Math.min(level - 1, 3))] ?? "#5a7a68";
@@ -38,7 +51,11 @@ function levelLabel(level: number) {
   return level > 0 ? LEVEL_LABELS[level - 1] : null;
 }
 
-function formatUsage(ms: number) {
+function formatUsage(ms?: number) {
+  if (!ms || Number.isNaN(ms)) {
+    return "0s";
+  }
+
   const totalSeconds = Math.floor(ms / 1000);
 
   if (totalSeconds < 60) {
@@ -58,26 +75,43 @@ function formatUsage(ms: number) {
   return `${minutes}m ${seconds}s`;
 }
 
-// ── Types ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────
 
 type AppScore = {
   packageName: string;
+
   appName: string;
+
   score: number;
+
   level: number;
+
   usageMs: number;
+
   usageBreakdown: {
     morning: number;
+
     afternoon: number;
+
     evening: number;
+
     night: number;
   };
 };
 
-// ── Per-app intensity section ─────────────────────────────────
+type WeeklyUsageDay = {
+  day: string;
+
+  usageMs: number;
+};
+
+// ─────────────────────────────────────────────────────────────
+// App Intensities
+// ─────────────────────────────────────────────────────────────
 
 function AppScoresSection({ appScores }: { appScores: AppScore[] }) {
-  console.log("appScores = ", appScores);
   return (
     <View style={styles.scoreSection}>
       <View style={styles.scoreHeaderRow}>
@@ -96,6 +130,7 @@ function AppScoresSection({ appScores }: { appScores: AppScore[] }) {
       ) : (
         appScores.map((app) => {
           const color = levelColor(app.level);
+
           const label = levelLabel(app.level);
 
           return (
@@ -157,36 +192,79 @@ function AppScoresSection({ appScores }: { appScores: AppScore[] }) {
   );
 }
 
-// ── Screen ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────────────────────
 
 export default function AppPickerScreen() {
   const [allApps, setAllApps] = useState<InstalledApp[]>([]);
+
   const [query, setQuery] = useState("");
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [accessibilityOn, setAccessibilityOn] = useState(false);
 
   const [overlayPermission, setOverlayPermission] = useState(false);
 
+  const [usagePermission, setUsagePermission] = useState(false);
+
   const [appScores, setAppScores] = useState<AppScore[]>([]);
+
+  const [snapshots, setSnapshots] = useState<DailySnapshot[]>([]);
+
+  const [weeklyUsageMap, setWeeklyUsageMap] = useState<
+    Record<string, WeeklyUsageDay[]>
+  >({});
 
   const [savedFeedback, setSavedFeedback] = useState(false);
 
   const feedbackOpacity = useRef(new Animated.Value(0)).current;
 
-  // ── Initial load ────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Weekly usage loader
+  // ───────────────────────────────────────────────────────────
+
+  const loadWeeklyUsage = async (packageNames: string[]) => {
+    if (packageNames.length === 0) {
+      return;
+    }
+    const result: Record<string, WeeklyUsageDay[]> = {};
+
+    for (const packageName of packageNames) {
+      try {
+        const weekly = await getWeeklyUsageForApp(packageName);
+
+        result[packageName] = weekly;
+      } catch (e) {
+        console.log("weekly usage error", e);
+      }
+    }
+
+    setWeeklyUsageMap(result);
+  };
 
   useEffect(() => {
-    const installed = getInstalledApps();
+    if (selected.size > 0) {
+      loadWeeklyUsage([...selected]);
+    }
+  }, [selected]);
 
-    setAllApps(installed);
+  // ───────────────────────────────────────────────────────────
+  // Initial load
+  // ───────────────────────────────────────────────────────────
 
-    const saved = getBlockedApps();
+  useEffect(() => {
+    setAllApps(getInstalledApps());
 
-    setSelected(new Set(saved));
+    setSelected(new Set(getBlockedApps()));
+
+    setSnapshots(getDailySnapshots());
   }, []);
 
-  // ── Refresh on screen focus ─────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Refresh on focus
+  // ───────────────────────────────────────────────────────────
 
   useFocusEffect(
     useCallback(() => {
@@ -194,11 +272,19 @@ export default function AppPickerScreen() {
 
       setOverlayPermission(canDrawOverlays());
 
-      setAppScores(getAllAppScores());
+      setUsagePermission(hasUsagePermission());
+
+      const scores = getAllAppScores();
+
+      setAppScores(scores);
+      setSnapshots(getDailySnapshots());
+      loadWeeklyUsage([...selected]);
     }, []),
   );
 
-  // ── Refresh on app foreground ───────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Refresh on foreground
+  // ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
@@ -207,24 +293,39 @@ export default function AppPickerScreen() {
 
         setOverlayPermission(canDrawOverlays());
 
-        setAppScores(getAllAppScores());
+        setUsagePermission(hasUsagePermission());
+
+        const scores = getAllAppScores();
+
+        setAppScores(scores);
+        setSnapshots(getDailySnapshots());
+        loadWeeklyUsage([...selected]);
       }
     });
 
     return () => sub.remove();
   }, []);
 
-  // ── Live updates from service ───────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Live updates
+  // ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     const sub = addBlockedAppListener(() => {
-      setAppScores(getAllAppScores());
+      const scores = getAllAppScores();
+
+      setAppScores(scores);
+      setSnapshots(getDailySnapshots());
+
+      loadWeeklyUsage([...selected]);
     });
 
     return () => sub.remove();
   }, []);
 
-  // ── Search filter ───────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Search
+  // ───────────────────────────────────────────────────────────
 
   const filteredApps =
     query.trim().length === 0
@@ -235,7 +336,9 @@ export default function AppPickerScreen() {
             a.packageName.toLowerCase().includes(query.toLowerCase()),
         );
 
-  // ── Toggle selection ───────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Toggle
+  // ───────────────────────────────────────────────────────────
 
   const toggle = (pkg: string) => {
     setSelected((prev) => {
@@ -247,7 +350,9 @@ export default function AppPickerScreen() {
     });
   };
 
-  // ── Save ───────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Save
+  // ───────────────────────────────────────────────────────────
 
   const save = () => {
     if (!accessibilityOn) {
@@ -260,14 +365,30 @@ export default function AppPickerScreen() {
       return;
     }
 
+    if (!usagePermission) {
+      openUsageAccessSettings();
+      return;
+    }
+
+    const previous = getBlockedApps();
+
+    const removed = previous.filter((pkg) => !selected.has(pkg));
+
+    removed.forEach((pkg) => {
+      clearAppData(pkg);
+    });
+
     saveBlockedApps([...selected]);
 
     showSavedFeedback();
   };
 
-  const allPermissionsGranted = accessibilityOn && overlayPermission;
+  const allPermissionsGranted =
+    accessibilityOn && overlayPermission && usagePermission;
 
-  // ── Save toast ──────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Toast
+  // ───────────────────────────────────────────────────────────
 
   const showSavedFeedback = () => {
     setSavedFeedback(true);
@@ -291,23 +412,43 @@ export default function AppPickerScreen() {
     });
   };
 
-  // ── Render ──────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────
+  // Merge daily snapshots
+  // ───────────────────────────────────────────────────────────
+
+  const mergedDailySnapshots = Object.values(
+    snapshots.reduce(
+      (acc, snapshot) => {
+        const existing = acc[snapshot.date];
+
+        if (!existing || snapshot.totalUsageMs > existing.totalUsageMs) {
+          acc[snapshot.date] = snapshot;
+        }
+
+        return acc;
+      },
+
+      {} as Record<string, DailySnapshot>,
+    ),
+  ).sort((a, b) => b.date.localeCompare(a.date));
+
+  // ───────────────────────────────────────────────────────────
+  // Render
+  // ───────────────────────────────────────────────────────────
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.title}>Choose apps to pause</Text>
 
       <Text style={styles.subtitle}>
         A breathing exercise will appear before these apps open
       </Text>
 
-      {/* Per-app intensity */}
-
       <AppScoresSection appScores={appScores} />
-
-      {/* Accessibility */}
 
       {!accessibilityOn && (
         <TouchableOpacity
@@ -315,123 +456,180 @@ export default function AppPickerScreen() {
           onPress={openAccessibilitySettings}
         >
           <Text style={styles.bannerText}>
-            ⚠️ Tap to enable Accessibility Service
+            Accessibility permission required
           </Text>
 
-          <Text style={styles.bannerSub}>Required to detect blocked apps</Text>
+          <Text style={styles.bannerSub}>
+            Tap to enable Lumina accessibility
+          </Text>
         </TouchableOpacity>
       )}
 
-      {/* Overlay permission */}
-
-      {accessibilityOn && !overlayPermission && (
+      {!overlayPermission && (
         <TouchableOpacity
           style={styles.bannerOverlay}
           onPress={openOverlaySettings}
         >
-          <Text style={styles.bannerText}>⚠️ Enable overlay permission</Text>
+          <Text style={styles.bannerText}>Overlay permission required</Text>
 
-          <Text style={styles.bannerSub}>
-            Required to show the pause overlay
-          </Text>
+          <Text style={styles.bannerSub}>Tap to allow overlays</Text>
         </TouchableOpacity>
       )}
 
-      {/* Search */}
+      {!usagePermission && (
+        <TouchableOpacity
+          style={styles.bannerUsage}
+          onPress={openUsageAccessSettings}
+        >
+          <Text style={styles.bannerText}>Usage access required</Text>
 
-      <View style={styles.searchRow}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search apps…"
-          placeholderTextColor="#3a5a48"
-          value={query}
-          onChangeText={setQuery}
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
+          <Text style={styles.bannerSub}>Tap to grant usage access</Text>
+        </TouchableOpacity>
+      )}
 
-        {selected.size > 0 && (
-          <Text style={styles.selectedCount}>{selected.size} selected</Text>
+      {/* Daily Balance */}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Daily Balance</Text>
+
+        {mergedDailySnapshots.map((snapshot, index) => (
+          <DailyStatsCard key={index} snapshot={snapshot} />
+        ))}
+      </View>
+
+      {/* Weekly Trends */}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Weekly Trends</Text>
+
+        {appScores.length === 0 ? (
+          <View style={styles.emptyWeeklyCard}>
+            <Text style={styles.emptyWeeklyText}>
+              Your weekly app rhythms will appear here
+            </Text>
+          </View>
+        ) : (
+          [...selected].map((packageName) => {
+            const rawWeekly = weeklyUsageMap[packageName] || [];
+            const todayIndex = new Date().getDay();
+
+            const orderedDays = [
+              ...WEEK_DAYS.slice(todayIndex + 1),
+              ...WEEK_DAYS.slice(0, todayIndex + 1),
+            ];
+
+            const weekly = orderedDays.map((day) => {
+              const existing = rawWeekly.find((d) => d.day === day);
+
+              return (
+                existing || {
+                  day,
+                  usageMs: 0,
+                }
+              );
+            });
+
+            const total = weekly.reduce((sum, day) => sum + day.usageMs, 0);
+
+            return (
+              <View key={packageName} style={styles.weeklyCard}>
+                <View style={styles.weeklyHeader}>
+                  <Text style={styles.weeklyAppName}>
+                    {allApps.find((a) => a.packageName === packageName)
+                      ?.label || packageName}
+                  </Text>
+
+                  <Text style={styles.weeklyUsage}>{formatUsage(total)}</Text>
+                </View>
+
+                <View style={styles.weekBars}>
+                  {weekly.map((day, index) => {
+                    const maxUsage = Math.max(
+                      ...weekly.map((d) => d.usageMs),
+                      1,
+                    );
+
+                    const height =
+                      day.usageMs === 0
+                        ? 8
+                        : Math.max(
+                            12,
+
+                            (day.usageMs / maxUsage) * 72,
+                          );
+
+                    return (
+                      <View key={index} style={styles.barContainer}>
+                        <Text style={styles.barUsage}>
+                          {day.usageMs > 0 ? formatUsage(day.usageMs) : ""}
+                        </Text>
+                        <View
+                          style={[
+                            styles.weekBar,
+                            {
+                              height,
+                            },
+                          ]}
+                        />
+
+                        <Text style={styles.barLabel}>{day.day}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })
         )}
       </View>
 
-      {/* App list */}
+      {/* App Picker */}
 
-      <FlatList
-        data={filteredApps}
-        keyExtractor={(item, index) => `${item.packageName}-${index}`}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => {
-          const isSelected = selected.has(item.packageName);
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Tracked Apps</Text>
+
+        {filteredApps.map((app) => {
+          const checked = selected.has(app.packageName);
 
           return (
             <TouchableOpacity
-              style={[styles.row, isSelected && styles.rowSelected]}
-              onPress={() => toggle(item.packageName)}
-              activeOpacity={0.7}
+              key={app.packageName}
+              style={[styles.row, checked && styles.rowSelected]}
+              onPress={() => toggle(app.packageName)}
             >
               <View style={styles.rowText}>
-                <Text style={styles.rowLabel} numberOfLines={1}>
-                  {item.label}
-                </Text>
+                <Text style={styles.rowLabel}>{app.label}</Text>
 
-                <Text style={styles.rowPkg} numberOfLines={1}>
-                  {item.packageName}
-                </Text>
+                <Text style={styles.rowPkg}>{app.packageName}</Text>
               </View>
 
               <View
-                style={[styles.checkbox, isSelected && styles.checkboxSelected]}
+                style={[styles.checkbox, checked && styles.checkboxSelected]}
               >
-                {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                {checked && <Text style={styles.checkmark}>✓</Text>}
               </View>
             </TouchableOpacity>
           );
-        }}
-      />
-
-      {/* Save toast */}
-
-      {savedFeedback && (
-        <Animated.View
-          style={[
-            styles.toast,
-            {
-              opacity: feedbackOpacity,
-            },
-          ]}
-        >
-          <Text style={styles.toastText}>
-            ✓ {selected.size} app
-            {selected.size !== 1 ? "s" : ""} saved
-          </Text>
-        </Animated.View>
-      )}
-
-      {/* Save button */}
+        })}
+      </View>
 
       <TouchableOpacity
         style={[
           styles.saveBtn,
+
           !allPermissionsGranted && styles.saveBtnDisabled,
         ]}
         onPress={save}
-        activeOpacity={0.8}
       >
-        <Text style={styles.saveBtnText}>
-          {!accessibilityOn
-            ? "⚠️ Enable Accessibility"
-            : !overlayPermission
-              ? "⚠️ Enable Overlay Permission"
-              : `Save (${selected.size} app${selected.size !== 1 ? "s" : ""})`}
-        </Text>
+        <Text style={styles.saveBtnText}>Save Tracked Apps</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -454,8 +652,6 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_400Regular",
     marginBottom: 18,
   },
-
-  // Scores
 
   scoreSection: {
     backgroundColor: "#1c2b24",
@@ -505,6 +701,23 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_400Regular",
   },
 
+  metaBlock: {
+    marginTop: 4,
+  },
+
+  breakdownRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 6,
+  },
+
+  breakdownText: {
+    color: "#5a7a68",
+    fontSize: 11,
+    fontFamily: "DMSans_400Regular",
+  },
+
   levelPill: {
     borderWidth: 1,
     borderRadius: 20,
@@ -518,7 +731,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Banners
+  section: {
+    marginBottom: 16,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    color: "#e8f0eb",
+    fontFamily: "DMSerifDisplay_400Regular",
+    marginBottom: 12,
+  },
 
   banner: {
     backgroundColor: "#2a1a00",
@@ -529,6 +751,13 @@ const styles = StyleSheet.create({
 
   bannerOverlay: {
     backgroundColor: "#1a002a",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+
+  bannerUsage: {
+    backgroundColor: "#00221a",
     padding: 14,
     borderRadius: 12,
     marginBottom: 14,
@@ -548,8 +777,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
-
-  // Search
 
   searchRow: {
     flexDirection: "row",
@@ -574,8 +801,6 @@ const styles = StyleSheet.create({
     color: "#4a9a6a",
     fontFamily: "DMSans_600SemiBold",
   },
-
-  // App rows
 
   listContent: {
     paddingBottom: 16,
@@ -635,8 +860,6 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_600SemiBold",
   },
 
-  // Toast
-
   toast: {
     position: "absolute",
     bottom: 100,
@@ -652,8 +875,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "DMSans_600SemiBold",
   },
-
-  // Save
 
   saveBtn: {
     backgroundColor: "#1a5c3a",
@@ -674,8 +895,6 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_600SemiBold",
   },
 
-  // History
-
   historyBtn: {
     backgroundColor: "#0e1412",
     paddingHorizontal: 12,
@@ -691,20 +910,78 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_600SemiBold",
   },
 
-  metaBlock: {
-    marginTop: 4,
+  weeklyCard: {
+    backgroundColor: "#17201c",
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 14,
   },
 
-  breakdownRow: {
+  weeklyHeader: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 6,
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
   },
 
-  breakdownText: {
-    color: "#5a7a68",
-    fontSize: 11,
+  weeklyAppName: {
+    color: "#e8f0eb",
+    fontSize: 15,
+    fontFamily: "DMSans_600SemiBold",
+  },
+
+  weeklyUsage: {
+    color: "#7ab89a",
+    fontSize: 13,
+    fontFamily: "DMSans_600SemiBold",
+  },
+
+  weekBars: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    height: 56,
+  },
+
+  barContainer: {
+    alignItems: "center",
+    flex: 1,
+  },
+
+  weekBar: {
+    width: 16,
+    borderRadius: 12,
+    backgroundColor: "#2f7a57",
+    marginBottom: 6,
+  },
+
+  barLabel: {
+    color: "#5f7c6a",
+    fontSize: 10,
     fontFamily: "DMSans_400Regular",
+  },
+
+  emptyWeeklyCard: {
+    backgroundColor: "#17201c",
+    borderRadius: 22,
+    padding: 24,
+    alignItems: "center",
+  },
+
+  emptyWeeklyText: {
+    color: "#5f7c6a",
+    fontSize: 13,
+    fontFamily: "DMSans_400Regular",
+  },
+
+  scrollContent: {
+    paddingBottom: 140,
+  },
+
+  barUsage: {
+    color: "#7ab89a",
+    fontSize: 9,
+    marginBottom: 4,
+    fontFamily: "DMSans_500Medium",
   },
 });
