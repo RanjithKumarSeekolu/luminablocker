@@ -1,4 +1,0 @@
-int id appName 0x0
-int id btnContinue 0x0
-int layout breath_overlay 0x0
-int xml lumina_accessibility_config 0x0
