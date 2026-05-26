@@ -1,15 +1,13 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+// app/_layout.tsx
+
 import { Stack } from "expo-router";
-import React from "react";
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>["name"];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-export default function TabLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+export default function RootLayout() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </GestureHandlerRootView>
+  );
 }

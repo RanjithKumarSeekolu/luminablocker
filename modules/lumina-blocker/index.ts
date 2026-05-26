@@ -9,6 +9,20 @@ export type InstalledApp = {
   label: string;
 };
 
+export type DailySnapshot = {
+  date: string;
+  totalUsageMs: number;
+  morningUsageMs: number;
+  afternoonUsageMs: number;
+  eveningUsageMs: number;
+  nightUsageMs: number;
+  reopenEvents: number;
+  intentionalExits: number;
+  focusResets: number;
+  overlaysTriggered: number;
+};
+
+
 export type BlockedAppEvent = {
   packageName: string;
   appName: string;
@@ -116,6 +130,23 @@ export function getAppDailySnapshots() {
 
 export function getWeeklyUsageForApp(packageName: string) {
   return LuminaBlocker.getWeeklyUsageForApp(packageName);
+}
+
+export function getTodayUsageBreakdown(packageName: string): {
+  total: number;
+  morning: number;
+  afternoon: number;
+  evening: number;
+  night: number;
+} {
+  return LuminaBlocker.getTodayUsageBreakdown(packageName);
+}
+
+export function getHistoricalDailyUsage(
+  packageNames: string[],
+  days: number = 7,
+): DailySnapshot[] {
+  return LuminaBlocker.getHistoricalDailyUsage(packageNames, days);
 }
 
 export function clearAppData(packageName: string) {

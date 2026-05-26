@@ -991,15 +991,8 @@ object SessionTracker {
                     "score" to score,
                     "level" to ScoreEngine
                         .scoreToLevel(score),
-                    "usageMs" to UsageStatsHelper
-                    .getTodayUsageForApp(
-                        ctx,
-                        packageName
-                    ),
-                    "usageBreakdown" to UsageStatsHelper.getTodayUsageBreakdown(
-                        ctx,
-                        packageName
-                    )
+                    "usageMs" to (UsageStatsHelper.getTodayUsageBreakdown(ctx, packageName)["total"] ?: 0L),
+                    "usageBreakdown" to UsageStatsHelper.getTodayUsageBreakdown(ctx, packageName)
                 )
             )
         }

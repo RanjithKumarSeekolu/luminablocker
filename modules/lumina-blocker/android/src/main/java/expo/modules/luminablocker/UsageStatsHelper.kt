@@ -45,58 +45,9 @@ object UsageStatsHelper {
           AppOpsManager.MODE_ALLOWED
   }
 
-  fun getTodayUsageForApp(
-    ctx: Context,
-    packageName: String
-  ): Long {
-
-      val usageStatsManager =
-          ctx.getSystemService(
-              Context.USAGE_STATS_SERVICE
-          ) as UsageStatsManager
-
-      val calendar =
-          Calendar.getInstance()
-
-      calendar.set(
-          Calendar.HOUR_OF_DAY,
-          0
-      )
-
-      calendar.set(
-          Calendar.MINUTE,
-          0
-      )
-
-      calendar.set(
-          Calendar.SECOND,
-          0
-      )
-
-      calendar.set(
-          Calendar.MILLISECOND,
-          0
-      )
-
-      val startTime =
-          calendar.timeInMillis
-
-      val endTime =
-          System.currentTimeMillis()
-
-      val stats =
-          usageStatsManager.queryUsageStats(
-              UsageStatsManager.INTERVAL_DAILY,
-              startTime,
-              endTime
-          )
-
-      val appStats =
-          stats.firstOrNull {
-              it.packageName == packageName
-          }
-
-      return appStats?.totalTimeInForeground ?: 0L
+  fun getTodayUsageForApp(ctx: Context, packageName: String): Long {
+      val breakdown = getTodayUsageBreakdown(ctx, packageName)
+      return breakdown["total"] ?: 0L
   }
 
   fun getTodayUsageForAllApps(
@@ -150,168 +101,248 @@ object UsageStatsHelper {
     }
   }
 
-  fun getTodayUsageBreakdown(
-      ctx: Context,
-      packageName: String
-  ): Map<String, Long> {
+fun getTodayUsageBreakdown(
+    ctx: Context,
+    packageName: String
+): Map<String, Long> {
 
-      if (!hasUsagePermission(ctx)) {
-          return emptyMap()
-      }
+    if (!hasUsagePermission(ctx)) return emptyMap()
 
-      val usageStatsManager =
-          ctx.getSystemService(
-              Context.USAGE_STATS_SERVICE
-          ) as UsageStatsManager
+    val usageStatsManager =
+        ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
-      val calendar =
-          Calendar.getInstance()
+    val calendar = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
 
-      calendar.set(
-          Calendar.HOUR_OF_DAY,
-          0
-      )
+    val startTime = calendar.timeInMillis
+    val endTime = System.currentTimeMillis()
 
-      calendar.set(
-          Calendar.MINUTE,
-          0
-      )
+    val events = usageStatsManager.queryEvents(startTime, endTime)
+    val event = android.app.usage.UsageEvents.Event()
 
-      calendar.set(
-          Calendar.SECOND,
-          0
-      )
+    var currentForegroundStart = 0L
+    var totalMs = 0L
+    var morningMs = 0L
+    var afternoonMs = 0L
+    var eveningMs = 0L
+    var nightMs = 0L
 
-      calendar.set(
-          Calendar.MILLISECOND,
-          0
-      )
+    while (events.hasNextEvent()) {
+        events.getNextEvent(event)
+        if (event.packageName != packageName) continue
 
-      val startTime =
-          calendar.timeInMillis
+        when (event.eventType) {
+            android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                currentForegroundStart = event.timeStamp
+            }
 
-      val endTime =
-          System.currentTimeMillis()
+            android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                if (currentForegroundStart == 0L) continue
 
-      val events =
-          usageStatsManager.queryEvents(
-              startTime,
-              endTime
-          )
+                val sessionDuration = event.timeStamp - currentForegroundStart
+                totalMs += sessionDuration
+                bucketSession(currentForegroundStart, sessionDuration).let { (m, a, e, n) ->
+                    morningMs += m
+                    afternoonMs += a
+                    eveningMs += e
+                    nightMs += n
+                }
+                currentForegroundStart = 0L
+            }
+        }
+    }
 
-      var currentForegroundStart = 0L
+    // ── Handle currently open session ──────────────────────────
+    if (currentForegroundStart > 0L) {
+        val sessionDuration = endTime - currentForegroundStart
+        totalMs += sessionDuration
+        bucketSession(currentForegroundStart, sessionDuration).let { (m, a, e, n) ->
+            morningMs += m
+            afternoonMs += a
+            eveningMs += e
+            nightMs += n
+        }
+    }
 
-      var morningMs = 0L
-      var afternoonMs = 0L
-      var eveningMs = 0L
-      var nightMs = 0L
+    return mapOf(
+        "total"     to totalMs,
+        "morning"   to morningMs,
+        "afternoon" to afternoonMs,
+        "evening"   to eveningMs,
+        "night"     to nightMs
+    )
+}
 
-      val event =
-          android.app.usage.UsageEvents.Event()
+private fun bucketSession(
+    startTime: Long,
+    durationMs: Long
+): List<Long> {
+    val hour = Calendar.getInstance()
+        .apply { timeInMillis = startTime }
+        .get(Calendar.HOUR_OF_DAY)
 
-      while (events.hasNextEvent()) {
+    var m = 0L; var a = 0L; var e = 0L; var n = 0L
 
-          events.getNextEvent(event)
+    when {
+        hour >= LuminaConfig.UsageBuckets.MORNING_START &&
+        hour <  LuminaConfig.UsageBuckets.MORNING_END   -> m = durationMs
 
-          if (event.packageName != packageName) {
-              continue
-          }
+        hour >= LuminaConfig.UsageBuckets.AFTERNOON_START &&
+        hour <  LuminaConfig.UsageBuckets.AFTERNOON_END  -> a = durationMs
 
-          when (event.eventType) {
+        hour >= LuminaConfig.UsageBuckets.EVENING_START &&
+        hour <  LuminaConfig.UsageBuckets.EVENING_END   -> e = durationMs
 
-              android.app.usage.UsageEvents.Event
-                  .MOVE_TO_FOREGROUND -> {
+        else -> n = durationMs
+    }
 
-                  currentForegroundStart =
-                      event.timeStamp
-              }
+    return listOf(m, a, e, n)
+}
 
-              android.app.usage.UsageEvents.Event
-                  .MOVE_TO_BACKGROUND -> {
+fun getDailyUsageForApp(
+    ctx: Context,
+    packageName: String,
+    dayOffset: Int // 0 = today, 1 = yesterday, 2 = two days ago etc.
+): Map<String, Any> {
 
-                  if (currentForegroundStart == 0L) {
-                      continue
-                  }
+    if (!hasUsagePermission(ctx)) return emptyMap()
 
-                  val sessionDuration =
-                      event.timeStamp -
-                          currentForegroundStart
+    val usageStatsManager =
+        ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
-                  val sessionHour =
-                      Calendar.getInstance()
-                          .apply {
-                              timeInMillis =
-                                  currentForegroundStart
-                          }
-                          .get(Calendar.HOUR_OF_DAY)
+    val calendar = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, -dayOffset)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
 
-                  when {
+    val startTime = calendar.timeInMillis
+    val endTime = if (dayOffset == 0) {
+        System.currentTimeMillis()
+    } else {
+        calendar.apply { add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
+    }
 
-                      sessionHour >=
-                          LuminaConfig
-                              .UsageBuckets
-                              .MORNING_START &&
+    val events = usageStatsManager.queryEvents(startTime, endTime)
+    val event = android.app.usage.UsageEvents.Event()
 
-                      sessionHour <
-                          LuminaConfig
-                              .UsageBuckets
-                              .MORNING_END -> {
+    var currentForegroundStart = 0L
+    var totalMs = 0L
+    var morningMs = 0L
+    var afternoonMs = 0L
+    var eveningMs = 0L
+    var nightMs = 0L
 
-                          morningMs +=
-                              sessionDuration
-                      }
+    while (events.hasNextEvent()) {
+        events.getNextEvent(event)
+        if (event.packageName != packageName) continue
 
-                      sessionHour >=
-                          LuminaConfig
-                              .UsageBuckets
-                              .AFTERNOON_START &&
+        when (event.eventType) {
+            android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                currentForegroundStart = event.timeStamp
+            }
+            android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                if (currentForegroundStart == 0L) continue
+                val duration = event.timeStamp - currentForegroundStart
+                totalMs += duration
+                bucketSession(currentForegroundStart, duration).let { (m, a, e, n) ->
+                    morningMs += m; afternoonMs += a; eveningMs += e; nightMs += n
+                }
+                currentForegroundStart = 0L
+            }
+        }
+    }
 
-                      sessionHour <
-                          LuminaConfig
-                              .UsageBuckets
-                              .AFTERNOON_END -> {
+    // Handle currently open session (only relevant for today)
+    if (currentForegroundStart > 0L) {
+        val duration = endTime - currentForegroundStart
+        totalMs += duration
+        bucketSession(currentForegroundStart, duration).let { (m, a, e, n) ->
+            morningMs += m; afternoonMs += a; eveningMs += e; nightMs += n
+        }
+    }
 
-                          afternoonMs +=
-                              sessionDuration
-                      }
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val date = dateFormat.format(Date(startTime))
 
-                      sessionHour >=
-                          LuminaConfig
-                              .UsageBuckets
-                              .EVENING_START &&
+    return mapOf(
+        "date"        to date,
+        "total"       to totalMs,
+        "morning"     to morningMs,
+        "afternoon"   to afternoonMs,
+        "evening"     to eveningMs,
+        "night"       to nightMs
+    )
+}
 
-                      sessionHour <
-                          LuminaConfig
-                              .UsageBuckets
-                              .EVENING_END -> {
+fun getHistoricalDailyUsage(
+    ctx: Context,
+    packageNames: List<String>,
+    days: Int = 7 // how many days back to fetch
+): List<Map<String, Any>> {
 
-                          eveningMs +=
-                              sessionDuration
-                      }
+    if (!hasUsagePermission(ctx)) return emptyList()
 
-                      else -> {
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val result = mutableListOf<Map<String, Any>>()
 
-                          nightMs +=
-                              sessionDuration
-                      }
-                  }
+    for (dayOffset in 0 until days) {
 
-                  currentForegroundStart = 0L
-              }
-          }
-      }
+        val calendar = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, -dayOffset)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 
-      return mapOf(
+        val startTime = calendar.timeInMillis
+        val endTime = if (dayOffset == 0) {
+            System.currentTimeMillis()
+        } else {
+            Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, -dayOffset)
+                set(Calendar.HOUR_OF_DAY, 23)
+                set(Calendar.MINUTE, 59)
+                set(Calendar.SECOND, 59)
+                set(Calendar.MILLISECOND, 999)
+            }.timeInMillis
+        }
 
-          "morning" to morningMs,
+        var totalMs = 0L
+        var morningMs = 0L
+        var afternoonMs = 0L
+        var eveningMs = 0L
+        var nightMs = 0L
 
-          "afternoon" to afternoonMs,
+        // Query all packages in one pass per day
+        for (packageName in packageNames) {
+            val breakdown = getDailyUsageForApp(ctx, packageName, dayOffset)
+            totalMs     += (breakdown["total"]     as? Long) ?: 0L
+            morningMs   += (breakdown["morning"]   as? Long) ?: 0L
+            afternoonMs += (breakdown["afternoon"] as? Long) ?: 0L
+            eveningMs   += (breakdown["evening"]   as? Long) ?: 0L
+            nightMs     += (breakdown["night"]     as? Long) ?: 0L
+        }
 
-          "evening" to eveningMs,
+        result.add(mapOf(
+            "date"          to dateFormat.format(Date(startTime)),
+            "totalUsageMs"     to totalMs,
+            "morningUsageMs"   to morningMs,
+            "afternoonUsageMs" to afternoonMs,
+            "eveningUsageMs"   to eveningMs,
+            "nightUsageMs"     to nightMs
+        ))
+    }
 
-          "night" to nightMs
-      )
-  }
+    return result
+}
 
     fun getWeeklyUsageForApp(
         ctx: Context,

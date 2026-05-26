@@ -77,6 +77,21 @@ class LuminaBlockerModule : Module() {
                     packageName
                 )
         }
+
+        Function("getTodayUsageBreakdown") { packageName: String ->
+            UsageStatsHelper.getTodayUsageBreakdown(
+                appContext.reactContext!!,
+                packageName
+            )
+        }
+
+        Function("getHistoricalDailyUsage") { packageNames: List<String>, days: Int ->
+            UsageStatsHelper.getHistoricalDailyUsage(
+                appContext.reactContext!!,
+                packageNames,
+                days
+            )
+        }
         
         Function("clearAppData") {
             packageName: String ->

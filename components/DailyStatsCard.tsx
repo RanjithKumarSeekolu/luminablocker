@@ -23,6 +23,8 @@ export type DailySnapshot = {
 };
 
 function formatUsage(ms: number) {
+  if (!ms || Number.isNaN(ms)) return "0s";
+
   const totalSeconds = Math.floor(ms / 1000);
 
   if (totalSeconds < 60) {
@@ -30,14 +32,14 @@ function formatUsage(ms: number) {
   }
 
   const hours = Math.floor(totalSeconds / 3600);
-
   const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
 
-  return `${minutes}m`;
+  return `${minutes}m ${seconds}s`;
 }
 
 export default function DailyStatsCard({
