@@ -267,5 +267,26 @@ class LuminaBlockerModule : Module() {
         // ── Events ────────────────────────────────────────────────
 
         Events("onBlockedAppDetected")
+
+
+        //focus
+        Events("onBlockedAppDetected", "onFocusComplete")
+
+        Function("startFocusMode") { durationMs: Double ->
+            LuminaFocusService.start(
+                appContext.reactContext!!,
+                durationMs.toLong()
+            )
+            null
+        }
+
+        Function("stopFocusMode") {
+            LuminaFocusService.stop(appContext.reactContext!!)
+            null
+        }
+
+        Function("isFocusModeActive") {
+            LuminaFocusService.isActive
+        }
     }
 }

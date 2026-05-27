@@ -469,6 +469,31 @@ export default function AppPickerScreen() {
       <Text style={styles.subtitle}>
         A breathing exercise will appear before these apps open
       </Text>
+      <TouchableOpacity
+        onPress={() => router.push("/FocusScreen")}
+        activeOpacity={0.8}
+        style={{
+          backgroundColor: "#1a5c3a",
+          paddingVertical: 14,
+          paddingHorizontal: 20,
+          borderRadius: 16,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 20,
+          borderWidth: 1,
+          borderColor: "#4caf7d",
+        }}
+      >
+        <Text
+          style={{
+            color: "#e8f0eb",
+            fontSize: 16,
+            fontFamily: "DMSans_600SemiBold",
+          }}
+        >
+          Start Focus Mode
+        </Text>
+      </TouchableOpacity>
 
       <AppScoresSection appScores={appScores} />
 

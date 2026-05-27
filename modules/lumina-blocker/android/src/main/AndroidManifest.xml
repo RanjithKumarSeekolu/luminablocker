@@ -2,24 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-  <!--
-    SYSTEM_ALERT_WINDOW — required for BreathOverlayService to draw a
-    TYPE_APPLICATION_OVERLAY window on top of Instagram, YouTube, etc.
-    User must grant this manually via Settings → Apps → Lumina →
-    "Display over other apps". We prompt them from AppPickerScreen.
-  -->
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-  <!--
-    FOREGROUND_SERVICE — required on Android 9+ to start a service
-    that remains alive while another app is in the foreground.
-  -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-  <!--
-    Query any launchable app — required on Android 11+ (API 30+) for
-    getInstalledApps() to return the full list via queryIntentActivities().
-  -->
   <queries>
     <intent>
       <action android:name="android.intent.action.MAIN" />
@@ -29,10 +16,6 @@
 
   <application>
 
-    <!--
-      Accessibility service — detects when a blocked app comes to foreground.
-      Requires the user to enable it in Settings → Accessibility → Lumina.
-    -->
     <service
         android:name="expo.modules.luminablocker.LuminaAccessibilityService"
         android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -46,26 +29,24 @@
           android:resource="@xml/lumina_accessibility_config" />
     </service>
 
-    <!--
-      Overlay service — draws the breath screen as a SYSTEM WINDOW on top
-      of any app. Does NOT switch the user to the Lumina app.
-      Replaces BreathOverlayActivity entirely.
-    -->
     <service
         android:name="expo.modules.luminablocker.BreathOverlayService"
         android:exported="false" />
 
     <!--
-      BreathOverlayActivity is kept ONLY for in-app preview/onboarding
-      (e.g. showing the user what the overlay looks like before they
-      enable the service). It is no longer used as the real overlay.
-      Remove this entry entirely if you don't need an in-app preview.
+      Focus mode foreground service — draws a persistent fullscreen overlay
+      and keeps a foreground notification so Android won't kill it.
+      foregroundServiceType="specialUse" is required on Android 14+
+      for services that don't fit a predefined type (camera, location, etc.)
     -->
-    <!-- <activity
-        android:name="expo.modules.luminablocker.BreathOverlayActivity"
-        android:exported="false"
-        android:excludeFromRecents="true"
-        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" /> -->
+    <service
+        android:name="expo.modules.luminablocker.LuminaFocusService"
+        android:foregroundServiceType="specialUse"
+        android:exported="false">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Focus mode overlay that blocks distracting apps during deep work sessions" />
+    </service>
 
   </application>
 

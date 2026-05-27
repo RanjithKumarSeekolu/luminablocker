@@ -1,719 +1,558 @@
-// app/focus/FocusScreen.tsx
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
+import {
+  addFocusCompleteListener,
+  isFocusModeActive,
+  startFocusMode,
+  stopFocusMode,
+} from "@/modules/lumina-blocker";
+import { useEffect, useRef, useState } from "react";
 import {
   Animated,
-  Dimensions,
-  ImageBackground,
+  Easing,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-
-import { PanGestureHandler } from "react-native-gesture-handler";
-
-import { SafeAreaView } from "react-native-safe-area-context";
-
-import { Ionicons } from "@expo/vector-icons";
-
-import { LinearGradient } from "expo-linear-gradient";
-
-import AmbienceSheet from "@/components/AmbienceSheet";
-import DurationSheet from "@/components/DurationSheet";
-import LuminaStatusBar from "@/components/LuminaStatusBar";
-
-const { width, height } = Dimensions.get("window");
-
-const TIMER_SIZE = width < 380 ? 240 : 280;
-
-const SLIDER_WIDTH = width - 48;
-
-const KNOB_SIZE = 68;
-
-const AMBIENCE_THEMES = {
-  "Forest Rain": {
-    gradient: ["#DCE7E0", "#B8C8BE", "#738579"],
-
-    accent: "#486556",
-
-    button: "#486556",
-
-    overlay: "rgba(30,40,34,0.18)",
-
-    subtitle: "Nature restores focus.",
-
-    bgImage: "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
-
-    icon: "rainy-outline",
-  },
-
-  "Midnight Waves": {
-    gradient: ["#1F2B48", "#34466E", "#7183B7"],
-
-    accent: "#DCE6FF",
-
-    button: "#34466E",
-
-    overlay: "rgba(10,14,24,0.32)",
-
-    subtitle: "Flow deeply into calm clarity.",
-
-    bgImage: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e",
-
-    icon: "moon-outline",
-  },
-
-  "Zen Garden": {
-    gradient: ["#ECE9E1", "#D3C9B9", "#8D8478"],
-
-    accent: "#445046",
-
-    button: "#4F6256",
-
-    overlay: "rgba(40,38,32,0.12)",
-
-    subtitle: "Stillness sharpens intention.",
-
-    bgImage: "https://images.unsplash.com/photo-1494526585095-c41746248156",
-
-    icon: "leaf-outline",
-  },
-
-  "Arctic Wind": {
-    gradient: ["#EEF6FF", "#C5D7E8", "#7E9CB6"],
-
-    accent: "#2D4B60",
-
-    button: "#43627A",
-
-    overlay: "rgba(20,28,36,0.14)",
-
-    subtitle: "Cold air. Clear thoughts.",
-
-    bgImage: "https://images.unsplash.com/photo-1517783999520-f068d7431a60",
-
-    icon: "snow-outline",
-  },
-} as const;
-
-const DURATIONS = [15, 25, 45, 60];
-
-export default function FocusScreen() {
-  const [selectedDuration, setSelectedDuration] = useState(25);
-
-  const [selectedAmbience, setSelectedAmbience] = useState("Forest Rain");
-
-  const [sessionActive, setSessionActive] = useState(false);
-
-  const [paused, setPaused] = useState(false);
-
-  const [showDurationSheet, setShowDurationSheet] = useState(false);
-
-  const [showAmbienceSheet, setShowAmbienceSheet] = useState(false);
-
-  const [remainingSeconds, setRemainingSeconds] = useState(
-    selectedDuration * 60,
-  );
-
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
-  const theme =
-    AMBIENCE_THEMES[selectedAmbience as keyof typeof AMBIENCE_THEMES];
-
-  // ─────────────────────────────────────
-  // Reset timer
-  // ─────────────────────────────────────
-
-  useEffect(() => {
-    if (!sessionActive) {
-      setRemainingSeconds(selectedDuration * 60);
-    }
-  }, [selectedDuration]);
-
-  // ─────────────────────────────────────
-  // Timer logic
-  // ─────────────────────────────────────
-
-  useEffect(() => {
-    if (!sessionActive || paused) {
-      return;
-    }
-
-    intervalRef.current = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (prev <= 1) {
-          endSession();
-
-          return selectedDuration * 60;
-        }
-
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [sessionActive, paused, selectedDuration]);
-
-  // ─────────────────────────────────────
-  // Formatted time
-  // ─────────────────────────────────────
-
-  const formattedTime = useMemo(() => {
-    const mins = Math.floor(remainingSeconds / 60);
-
-    const secs = remainingSeconds % 60;
-
-    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-  }, [remainingSeconds]);
-
-  // ─────────────────────────────────────
-  // Slider reset
-  // ─────────────────────────────────────
-
-  const resetSlider = () => {
-    Animated.spring(slideAnim, {
-      toValue: 0,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  // ─────────────────────────────────────
-  // Start
-  // ─────────────────────────────────────
-
-  const startSession = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    setRemainingSeconds(selectedDuration * 60);
-
-    setSessionActive(true);
-
-    setPaused(false);
-  };
-
-  // ─────────────────────────────────────
-  // Pause
-  // ─────────────────────────────────────
-
-  const pauseSession = () => {
-    setPaused((prev) => !prev);
-  };
-
-  // ─────────────────────────────────────
-  // End
-  // ─────────────────────────────────────
-
-  const endSession = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    intervalRef.current = null;
-
-    setSessionActive(false);
-
-    setPaused(false);
-
-    setRemainingSeconds(selectedDuration * 60);
-
-    resetSlider();
-  };
+import Svg, { Circle } from "react-native-svg";
+
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
+
+const DURATIONS = [
+  { label: "15m", ms: 15 * 60 * 1000 },
+  { label: "25m", ms: 25 * 60 * 1000 },
+  { label: "45m", ms: 45 * 60 * 1000 },
+  { label: "60m", ms: 60 * 60 * 1000 },
+];
+
+const PHRASES = [
+  "Your phone cannot reach you here.\nStay present.",
+  "One task. One moment.\nYou've got this.",
+  "Deep work is the superpower\nof our distracted age.",
+  "Every minute here\nis reclaimed from noise.",
+  "The best ideas arrive\nin silence.",
+];
+
+const RING_RADIUS = 90;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+function formatTime(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+}
+
+function ringColor(pct: number): string {
+  if (pct < 0.25) return "#9a5a2a";
+  if (pct < 0.5) return "#9a8a2a";
+  return "#4caf7d";
+}
+
+// ─────────────────────────────────────────────────────────────
+// Ring component
+// ─────────────────────────────────────────────────────────────
+
+function TimerRing({
+  totalMs,
+  remainingMs,
+}: {
+  totalMs: number;
+  remainingMs: number;
+}) {
+  const pct = totalMs > 0 ? remainingMs / totalMs : 0;
+  const strokeDashoffset = RING_CIRCUMFERENCE * (1 - pct);
+  const color = ringColor(pct);
 
   return (
-    <>
-      <LuminaStatusBar
-        translucent
-        backgroundColor="transparent"
-        barStyle="dark-content"
-      />
-
-      <ImageBackground
-        source={{
-          uri: theme.bgImage,
-        }}
-        resizeMode="cover"
-        style={styles.flex}
-      >
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              backgroundColor: theme.overlay,
-            },
-          ]}
+    <View style={styles.ringWrap}>
+      <Svg width={220} height={220} style={styles.ringSvg}>
+        {/* Track */}
+        <Circle
+          cx={110}
+          cy={110}
+          r={RING_RADIUS}
+          stroke="#1c2b24"
+          strokeWidth={8}
+          fill="none"
         />
+        {/* Progress */}
+        <Circle
+          cx={110}
+          cy={110}
+          r={RING_RADIUS}
+          stroke={color}
+          strokeWidth={8}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={RING_CIRCUMFERENCE}
+          strokeDashoffset={strokeDashoffset}
+          rotation={-90}
+          origin="110, 110"
+        />
+      </Svg>
 
-        <LinearGradient colors={theme.gradient} style={styles.flex}>
-          <SafeAreaView style={styles.flex}>
-            <View style={styles.content}>
-              {/* Hero */}
-
-              <View style={styles.hero}>
-                <Text
-                  style={[
-                    styles.journeyLabel,
-                    {
-                      color: theme.accent,
-                    },
-                  ]}
-                >
-                  CURRENT JOURNEY
-                </Text>
-
-                <Text
-                  style={[
-                    styles.ambienceTitle,
-                    {
-                      color: theme.accent,
-                    },
-                  ]}
-                >
-                  {selectedAmbience}
-                </Text>
-
-                <Text
-                  style={[
-                    styles.subtitle,
-                    {
-                      color: theme.accent,
-                    },
-                  ]}
-                >
-                  {theme.subtitle}
-                </Text>
-              </View>
-
-              {/* Timer */}
-
-              <View
-                style={[
-                  styles.timerCircle,
-                  {
-                    width: TIMER_SIZE,
-                    height: TIMER_SIZE,
-                    borderRadius: TIMER_SIZE / 2,
-
-                    borderColor: `${theme.accent}40`,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.timerText,
-                    {
-                      color: theme.accent,
-                    },
-                  ]}
-                >
-                  {formattedTime}
-                </Text>
-
-                <Ionicons
-                  name={theme.icon as keyof typeof Ionicons.glyphMap}
-                  size={42}
-                  color={theme.accent}
-                />
-              </View>
-
-              {/* Controls */}
-
-              {!sessionActive ? (
-                <>
-                  <PanGestureHandler
-                    onGestureEvent={(event: any) => {
-                      const x = event.nativeEvent.translationX;
-
-                      if (x >= 0 && x <= SLIDER_WIDTH - KNOB_SIZE) {
-                        slideAnim.setValue(x);
-                      }
-                    }}
-                    onEnded={(event) => {
-                      const x = event.nativeEvent.translationX as any;
-
-                      if (x > 180) {
-                        Animated.timing(slideAnim, {
-                          toValue: SLIDER_WIDTH - KNOB_SIZE - 14,
-
-                          duration: 180,
-
-                          useNativeDriver: false,
-                        }).start(() => {
-                          startSession();
-                        });
-                      } else {
-                        resetSlider();
-                      }
-                    }}
-                  >
-                    <View style={styles.sliderContainer}>
-                      <Text style={styles.sliderText}>Slide to Focus</Text>
-
-                      <Animated.View
-                        style={[
-                          styles.sliderKnob,
-                          {
-                            backgroundColor: theme.button,
-
-                            transform: [
-                              {
-                                translateX: slideAnim,
-                              },
-                            ],
-                          },
-                        ]}
-                      >
-                        <Ionicons name="flash-outline" size={28} color="#fff" />
-                      </Animated.View>
-                    </View>
-                  </PanGestureHandler>
-
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={styles.secondaryBtn}
-                      onPress={() => setShowDurationSheet(true)}
-                    >
-                      <Text style={styles.secondaryBtnText}>Duration</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.secondaryBtn}
-                      onPress={() => setShowAmbienceSheet(true)}
-                    >
-                      <Text style={styles.secondaryBtnText}>Ambience</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={[
-                      styles.pauseButton,
-                      {
-                        backgroundColor: theme.button,
-                      },
-                    ]}
-                    onPress={pauseSession}
-                  >
-                    <Ionicons
-                      name={paused ? "play" : "pause"}
-                      size={22}
-                      color="#fff"
-                    />
-
-                    <Text style={styles.pauseButtonText}>
-                      {paused ? "Resume Focus" : "Pause Focus"}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={endSession}>
-                    <Text style={styles.endSession}>End Session</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-
-              {/* Music Card */}
-
-              <View style={styles.activeCard}>
-                <View style={styles.activeLeft}>
-                  <Ionicons
-                    name={theme.icon as keyof typeof Ionicons.glyphMap}
-                    size={30}
-                    color={theme.accent}
-                  />
-
-                  <View>
-                    <Text
-                      style={[
-                        styles.activeText,
-                        {
-                          color: theme.accent,
-                        },
-                      ]}
-                    >
-                      {selectedAmbience}
-                    </Text>
-
-                    <Text style={styles.activeSubtext}>
-                      {sessionActive
-                        ? "Soundscape active"
-                        : "Ready for your session"}
-                    </Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity style={styles.soundBtn}>
-                  <Ionicons
-                    name={sessionActive ? "volume-high" : "volume-medium"}
-                    size={22}
-                    color={theme.accent}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </SafeAreaView>
-        </LinearGradient>
-      </ImageBackground>
-
-      <DurationSheet
-        visible={showDurationSheet}
-        selectedDuration={selectedDuration}
-        durations={DURATIONS}
-        onClose={() => setShowDurationSheet(false)}
-        onSelect={(duration) => {
-          setSelectedDuration(duration);
-
-          // setShowDurationSheet(false);
-        }}
-      />
-
-      <AmbienceSheet
-        visible={showAmbienceSheet}
-        selectedAmbience={selectedAmbience}
-        onClose={() => setShowAmbienceSheet(false)}
-        onSelect={(ambience) => {
-          setSelectedAmbience(ambience);
-
-          setShowAmbienceSheet(false);
-        }}
-      />
-    </>
+      <View style={styles.ringCenter}>
+        <Text style={styles.ringLabel}>remaining</Text>
+        <Text style={[styles.ringTimer, { color }]}>
+          {formatTime(remainingMs)}
+        </Text>
+        <Text style={styles.ringSub}>deep work</Text>
+      </View>
+    </View>
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────────────────────
+
+export default function FocusScreen() {
+  const [selectedDuration, setSelectedDuration] = useState(DURATIONS[1]);
+  const [isRunning, setIsRunning] = useState(isFocusModeActive());
+  const [remainingMs, setRemainingMs] = useState(DURATIONS[1].ms);
+  const [totalMs, setTotalMs] = useState(DURATIONS[1].ms);
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [sessionNumber, setSessionNumber] = useState(1);
+  const [todayMinutes, setTodayMinutes] = useState(0);
+  const [completed, setCompleted] = useState(false);
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const phraseRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
+  const phraseOpacity = useRef(new Animated.Value(1)).current;
+
+  // ── Listen for native completion ──────────────────────────
+  useEffect(() => {
+    const sub = addFocusCompleteListener(({ completed: done }) => {
+      clearInterval(intervalRef.current!);
+      clearInterval(phraseRef.current!);
+      setIsRunning(false);
+      setCompleted(done);
+      if (done) {
+        setTodayMinutes((prev) => prev + Math.round(totalMs / 60000));
+        setSessionNumber((prev) => prev + 1);
+        setRemainingMs(totalMs);
+      }
+    });
+    return () => sub.remove();
+  }, [totalMs]);
+
+  // ── JS-side countdown (mirrors native timer for UI) ───────
+  const startCountdown = (duration: number) => {
+    startTimeRef.current = Date.now();
+    setRemainingMs(duration);
+
+    intervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const left = Math.max(0, duration - elapsed);
+      setRemainingMs(left);
+      if (left <= 0) clearInterval(intervalRef.current!);
+    }, 500);
+  };
+
+  const stopCountdown = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  };
+
+  // ── Phrase cycling ────────────────────────────────────────
+  const startPhrases = () => {
+    phraseRef.current = setInterval(
+      () => {
+        Animated.sequence([
+          Animated.timing(phraseOpacity, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+            easing: Easing.out(Easing.ease),
+          }),
+          Animated.timing(phraseOpacity, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+            easing: Easing.in(Easing.ease),
+          }),
+        ]).start();
+        setPhraseIndex((prev) => (prev + 1) % PHRASES.length);
+      },
+      2 * 60 * 1000,
+    );
+  };
+
+  const stopPhrases = () => {
+    if (phraseRef.current) clearInterval(phraseRef.current);
+  };
+
+  // ── Start / pause ─────────────────────────────────────────
+  const handleStart = () => {
+    if (isRunning) {
+      // Pause — stop native + JS timer
+      stopFocusMode();
+      stopCountdown();
+      stopPhrases();
+      setIsRunning(false);
+      return;
+    }
+
+    setCompleted(false);
+    const duration = remainingMs < 1000 ? selectedDuration.ms : remainingMs;
+    startFocusMode(duration);
+    startCountdown(duration);
+    startPhrases();
+    setIsRunning(true);
+  };
+
+  // ── Duration select ───────────────────────────────────────
+  const handleDuration = (dur: (typeof DURATIONS)[0]) => {
+    if (isRunning) return;
+    setSelectedDuration(dur);
+    setTotalMs(dur.ms);
+    setRemainingMs(dur.ms);
+    setCompleted(false);
+  };
+
+  // ── Cleanup on unmount ────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      stopCountdown();
+      stopPhrases();
+    };
+  }, []);
+
+  const pct = totalMs > 0 ? remainingMs / totalMs : 0;
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ── Chip ── */}
+      <View style={styles.chipWrap}>
+        <View style={styles.chip}>
+          <Text style={styles.chipText}>FOCUS MODE</Text>
+        </View>
+      </View>
+
+      {/* ── Ring ── */}
+      <TimerRing totalMs={totalMs} remainingMs={remainingMs} />
+
+      {/* ── Phrase ── */}
+      <Animated.Text style={[styles.phrase, { opacity: phraseOpacity }]}>
+        {completed
+          ? "Session complete.\nWell done — take a short break."
+          : PHRASES[phraseIndex]}
+      </Animated.Text>
+
+      {/* ── Volume hint ── */}
+      <View style={styles.volCard}>
+        <Text style={styles.volIcon}>▼</Text>
+        <Text style={styles.volText}>Hold volume down 10s to exit early</Text>
+      </View>
+
+      {/* ── Stats ── */}
+      <View style={styles.statsRow}>
+        <View style={styles.statPill}>
+          <Text style={styles.statLabel}>session</Text>
+          <Text style={styles.statValue}>{ordinal(sessionNumber)}</Text>
+        </View>
+        <View style={styles.statPill}>
+          <Text style={styles.statLabel}>today</Text>
+          <Text style={styles.statValue}>{todayMinutes}m</Text>
+        </View>
+        <View style={[styles.statPill, { marginRight: 0 }]}>
+          <Text style={styles.statLabel}>streak</Text>
+          <Text style={styles.statValue}>3 days</Text>
+        </View>
+      </View>
+
+      {/* ── Duration selector ── */}
+      <View style={[styles.durRow, isRunning && styles.durRowDisabled]}>
+        {DURATIONS.map((dur) => {
+          const active = dur.ms === selectedDuration.ms;
+          return (
+            <TouchableOpacity
+              key={dur.label}
+              style={[styles.durBtn, active && styles.durBtnActive]}
+              onPress={() => handleDuration(dur)}
+              disabled={isRunning}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.durBtnText, active && styles.durBtnTextActive]}
+              >
+                {dur.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Start button ── */}
+      <TouchableOpacity
+        style={[styles.startBtn, isRunning && styles.startBtnRunning]}
+        onPress={handleStart}
+        activeOpacity={0.85}
+      >
+        <Text
+          style={[styles.startBtnText, isRunning && styles.startBtnTextRunning]}
+        >
+          {isRunning
+            ? "⏸  Pause"
+            : completed
+              ? "▶  Start again"
+              : "▶  Start focus session"}
+        </Text>
+      </TouchableOpacity>
+
+      {/* ── Progress bar (when running) ── */}
+      {isRunning && (
+        <View style={styles.progressBg}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${Math.round(pct * 100)}%` as any,
+                backgroundColor: ringColor(pct),
+              },
+            ]}
+          />
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  flex: {
+  container: {
     flex: 1,
+    backgroundColor: "#0e1412",
   },
 
-  content: {
-    flex: 1,
-
+  scrollContent: {
+    alignItems: "center",
     paddingHorizontal: 24,
-
-    paddingTop: 16,
-
-    paddingBottom: 24,
-
-    justifyContent: "space-between",
+    paddingTop: 32,
+    paddingBottom: 60,
   },
 
-  hero: {
-    alignItems: "center",
-
-    marginTop: height < 700 ? 10 : 28,
+  chipWrap: {
+    marginBottom: 36,
   },
 
-  journeyLabel: {
-    fontSize: 13,
-
-    letterSpacing: 4,
-
-    opacity: 0.75,
-  },
-
-  ambienceTitle: {
-    marginTop: 12,
-
-    fontSize: width < 380 ? 38 : 48,
-
-    fontWeight: "300",
-  },
-
-  subtitle: {
-    marginTop: 10,
-
-    fontSize: 15,
-
-    opacity: 0.8,
-  },
-
-  timerCircle: {
-    alignSelf: "center",
-
-    justifyContent: "center",
-
-    alignItems: "center",
-
-    backgroundColor: "rgba(255,255,255,0.08)",
-
-    borderWidth: 1.5,
-  },
-
-  timerText: {
-    fontSize: width < 380 ? 58 : 72,
-
-    fontWeight: "200",
-
-    marginBottom: 12,
-  },
-
-  sliderContainer: {
-    height: 82,
-
-    borderRadius: 41,
-
-    justifyContent: "center",
-
-    overflow: "hidden",
-
-    backgroundColor: "rgba(255,255,255,0.26)",
-  },
-
-  sliderText: {
-    alignSelf: "center",
-
-    fontSize: 22,
-
-    fontWeight: "700",
-
-    color: "rgba(20,30,25,0.45)",
-  },
-
-  sliderKnob: {
-    position: "absolute",
-
-    left: 7,
-
-    width: 68,
-
-    height: 68,
-
-    borderRadius: 34,
-
-    justifyContent: "center",
-
-    alignItems: "center",
-  },
-
-  actionRow: {
-    flexDirection: "row",
-
-    marginTop: 16,
-
-    gap: 16,
-  },
-
-  secondaryBtn: {
-    flex: 1,
-
-    height: 56,
-
-    borderRadius: 28,
-
-    justifyContent: "center",
-
-    alignItems: "center",
-
-    backgroundColor: "rgba(255,255,255,0.28)",
-  },
-
-  secondaryBtnText: {
-    fontSize: 16,
-
-    fontWeight: "600",
-
-    color: "#23352D",
-  },
-
-  pauseButton: {
-    height: 82,
-
-    borderRadius: 41,
-
-    marginTop: 12,
-
-    flexDirection: "row",
-
-    justifyContent: "center",
-
-    alignItems: "center",
-
-    gap: 10,
-  },
-
-  pauseButtonText: {
-    color: "#fff",
-
-    fontSize: 22,
-
-    fontWeight: "700",
-  },
-
-  endSession: {
-    marginTop: 18,
-
-    textAlign: "center",
-
-    fontSize: 18,
-
-    fontWeight: "500",
-
-    color: "rgba(20,30,25,0.6)",
-  },
-
-  activeCard: {
-    height: 90,
-
-    borderRadius: 30,
-
-    backgroundColor: "rgba(255,255,255,0.22)",
-
+  chip: {
+    backgroundColor: "#1c2b24",
+    borderRadius: 20,
     borderWidth: 1,
+    borderColor: "#2a4a38",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
 
-    borderColor: "rgba(255,255,255,0.16)",
+  chipText: {
+    color: "#4caf7d",
+    fontSize: 11,
+    fontFamily: "DMSans_600SemiBold",
+    letterSpacing: 1,
+  },
 
-    paddingHorizontal: 20,
+  ringWrap: {
+    width: 220,
+    height: 220,
+    marginBottom: 36,
+    position: "relative",
+  },
 
-    flexDirection: "row",
+  ringSvg: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+  },
 
+  ringCenter: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: "center",
-
-    justifyContent: "space-between",
-  },
-
-  activeLeft: {
-    flexDirection: "row",
-
-    alignItems: "center",
-
-    gap: 14,
-  },
-
-  activeText: {
-    fontSize: 18,
-
-    fontWeight: "700",
-  },
-
-  activeSubtext: {
-    marginTop: 4,
-
-    fontSize: 13,
-
-    color: "rgba(20,30,25,0.55)",
-  },
-
-  soundBtn: {
-    width: 48,
-
-    height: 48,
-
-    borderRadius: 24,
-
     justifyContent: "center",
+    gap: 4,
+  },
 
+  ringLabel: {
+    color: "#5a7a68",
+    fontSize: 12,
+    fontFamily: "DMSans_400Regular",
+  },
+
+  ringTimer: {
+    fontSize: 44,
+    fontFamily: "DMSans_600SemiBold",
+    letterSpacing: -1,
+    lineHeight: 52,
+  },
+
+  ringSub: {
+    color: "#4caf7d",
+    fontSize: 11,
+    fontFamily: "DMSans_400Regular",
+  },
+
+  phrase: {
+    color: "#5a7a68",
+    fontSize: 14,
+    fontFamily: "DMSans_400Regular",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 32,
+    minHeight: 44,
+  },
+
+  volCard: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 10,
+    backgroundColor: "#111c17",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1c2b24",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: "100%",
+    marginBottom: 24,
+  },
 
-    backgroundColor: "rgba(255,255,255,0.18)",
+  volIcon: {
+    color: "#2a4a38",
+    fontSize: 14,
+  },
+
+  volText: {
+    color: "#2a4a38",
+    fontSize: 12,
+    fontFamily: "DMSans_400Regular",
+    flex: 1,
+  },
+
+  statsRow: {
+    flexDirection: "row",
+    width: "100%",
+    marginBottom: 16,
+  },
+
+  statPill: {
+    flex: 1,
+    backgroundColor: "#111c17",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1c2b24",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginRight: 10,
+    gap: 4,
+  },
+
+  statLabel: {
+    color: "#2a4a38",
+    fontSize: 11,
+    fontFamily: "DMSans_400Regular",
+  },
+
+  statValue: {
+    color: "#7ab89a",
+    fontSize: 16,
+    fontFamily: "DMSans_600SemiBold",
+  },
+
+  durRow: {
+    flexDirection: "row",
+    width: "100%",
+    marginBottom: 24,
+    gap: 8,
+  },
+
+  durRowDisabled: {
+    opacity: 0.3,
+  },
+
+  durBtn: {
+    flex: 1,
+    backgroundColor: "#111c17",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1c2b24",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+
+  durBtnActive: {
+    backgroundColor: "#1c2b24",
+    borderColor: "#4caf7d",
+  },
+
+  durBtnText: {
+    color: "#5a7a68",
+    fontSize: 13,
+    fontFamily: "DMSans_400Regular",
+  },
+
+  durBtnTextActive: {
+    color: "#4caf7d",
+    fontFamily: "DMSans_600SemiBold",
+  },
+
+  startBtn: {
+    width: "100%",
+    backgroundColor: "#1a5c3a",
+    borderRadius: 24,
+    paddingVertical: 18,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+
+  startBtnRunning: {
+    backgroundColor: "#0e1412",
+    borderWidth: 1,
+    borderColor: "#2a4a38",
+  },
+
+  startBtnText: {
+    color: "#e8f0eb",
+    fontSize: 15,
+    fontFamily: "DMSans_600SemiBold",
+  },
+
+  startBtnTextRunning: {
+    color: "#5a7a68",
+  },
+
+  progressBg: {
+    width: "100%",
+    height: 2,
+    backgroundColor: "#1c2b24",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+
+  progressFill: {
+    height: 2,
+    borderRadius: 2,
   },
 });

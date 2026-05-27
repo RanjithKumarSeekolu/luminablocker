@@ -22,7 +22,6 @@ export type DailySnapshot = {
   overlaysTriggered: number;
 };
 
-
 export type BlockedAppEvent = {
   packageName: string;
   appName: string;
@@ -233,4 +232,24 @@ export function getHistory(): ScoreHistoryEvent[] {
 
 export function clearHistory(): void {
   return LuminaBlocker.clearHistory();
+}
+
+//focus
+
+export function startFocusMode(durationMs: number): void {
+  return LuminaBlocker.startFocusMode(durationMs);
+}
+
+export function stopFocusMode(): void {
+  return LuminaBlocker.stopFocusMode();
+}
+
+export function isFocusModeActive(): boolean {
+  return LuminaBlocker.isFocusModeActive();
+}
+
+export function addFocusCompleteListener(
+  callback: (event: { completed: boolean }) => void,
+) {
+  return emitter.addListener("onFocusComplete", callback);
 }
