@@ -8,30 +8,28 @@ import android.content.IntentFilter
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.os.Handler
+import android.os.Looper
 
 class LuminaAccessibilityService : AccessibilityService() {
 
     private var lastForegroundPackage = ""
     private var lastForegroundTime    = 0L
 
+    private var volumeHeld = false
+
+    private var holdStartTime = 0L
+
+    private val handler =
+        Handler(Looper.getMainLooper())
+
+    private var holdRunnable: Runnable? = null
+
     companion object {
         const val TAG = "LuminaService"
     }
 
     // ── Volume key detection ──────────────────────────────────────
-    override fun onKeyEvent(event: KeyEvent?): Boolean {
-        if (!LuminaFocusService.isActive) return false
-
-        if (event?.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            val pressed = event.action == KeyEvent.ACTION_DOWN
-            val intent = Intent("lumina.VOLUME_DOWN_PRESSED").apply {
-                putExtra("pressed", pressed)
-            }
-            sendBroadcast(intent)
-            return true // consume — don't change volume
-        }
-        return false
-    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()

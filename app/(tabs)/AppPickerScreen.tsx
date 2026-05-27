@@ -633,12 +633,12 @@ export default function AppPickerScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Tracked Apps</Text>
 
-        {filteredApps.map((app) => {
+        {filteredApps.map((app, index) => {
           const checked = selected.has(app.packageName);
 
           return (
             <TouchableOpacity
-              key={app.packageName}
+              key={`${app.packageName}-${index}`}
               style={[styles.row, checked && styles.rowSelected]}
               onPress={() => toggle(app.packageName)}
             >

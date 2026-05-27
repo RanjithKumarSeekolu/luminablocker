@@ -8,6 +8,7 @@ import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.core.app.NotificationCompat
+import expo.modules.luminablocker.LuminaFocusConfig
 
 class LuminaFocusService : Service() {
 
@@ -16,7 +17,7 @@ class LuminaFocusService : Service() {
     private var overlayView: View? = null
 
     // ── Timer state ───────────────────────────────────────────────
-    @Volatile private var totalMs: Long = 25 * 60 * 1000L
+    @Volatile private var totalMs: Long = LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS
     @Volatile private var remainingMs: Long = totalMs
     private var isRunning = false
     private var timerHandler = Handler(Looper.getMainLooper())
@@ -63,15 +64,8 @@ class LuminaFocusService : Service() {
             "The best ideas arrive\nin silence."
         )
 
-        private val DURATIONS = listOf(
-            15 * 60 * 1000L,
-            25 * 60 * 1000L,
-            45 * 60 * 1000L,
-            60 * 60 * 1000L
-        )
-        private val DURATION_LABELS = listOf("15m", "25m", "45m", "60m")
 
-        fun start(ctx: Context, durationMs: Long = 25 * 60 * 1000L) {
+        fun start(ctx: Context, durationMs: Long = LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS) {
             val intent = Intent(ctx, LuminaFocusService::class.java).apply {
                 putExtra(EXTRA_DURATION, durationMs)
             }
@@ -103,7 +97,7 @@ class LuminaFocusService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        totalMs    = intent?.getLongExtra(EXTRA_DURATION, 25 * 60 * 1000L) ?: (25 * 60 * 1000L)
+        totalMs    = intent?.getLongExtra(EXTRA_DURATION, LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS) ?: (LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS)
         remainingMs = totalMs
         showOverlay()
         return START_STICKY
@@ -132,18 +126,31 @@ class LuminaFocusService : Service() {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
                 @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
+            WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_FULLSCREEN or
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.TOP or Gravity.START
         }
 
         val view = buildOverlayView()
+
+        view.isFocusable = true
+
+        view.isFocusableInTouchMode = true
+
+        view.requestFocus()
         overlayView = view
+        view.systemUiVisibility =
+        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+        View.SYSTEM_UI_FLAG_FULLSCREEN or
+        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         windowManager?.addView(view, params)
     }
 
@@ -160,10 +167,39 @@ class LuminaFocusService : Service() {
         val ctx = this
 
         // ── Root scroll + container ───────────────────────────────
-        val scroll = ScrollView(ctx).apply {
-            setBackgroundColor(Color.parseColor("#0e1412"))
+        val scroll = object : ScrollView(ctx) {
+
+            override fun dispatchKeyEvent(
+                event: KeyEvent
+            ): Boolean {
+
+                if (
+                    event.keyCode ==
+                    KeyEvent.KEYCODE_VOLUME_DOWN
+                ) {
+
+                    onVolumeDown(
+                        event.action ==
+                        KeyEvent.ACTION_DOWN
+                    )
+
+                    return true
+                }
+
+                return super.dispatchKeyEvent(event)
+            }
+        }.apply {
+
+            setBackgroundColor(
+                Color.parseColor("#0e1412")
+            )
+
             isVerticalScrollBarEnabled = false
         }
+
+        scroll.isClickable = true
+        scroll.isFocusable = true
+        scroll.isFocusableInTouchMode = true
 
         val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -272,7 +308,11 @@ class LuminaFocusService : Service() {
             ).apply { rightMargin = dp(10) }
         }
         val volText = TextView(ctx).apply {
-            text = "Hold volume down 10s to exit early"
+            text =
+                "Hold volume down ${
+                    LuminaFocusConfig
+                        .VOLUME_HOLD_EXIT_DURATION_MS / 1000
+                }s to exit early"
             textSize = 12f
             setTextColor(Color.parseColor("#2a4a38"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -326,8 +366,8 @@ class LuminaFocusService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(24) }
         }
-        DURATION_LABELS.forEachIndexed { i, label ->
-            val isSelected = DURATIONS[i] == totalMs
+        LuminaFocusConfig.FOCUS_DURATION_LABELS.forEachIndexed { i, label ->
+            val isSelected = LuminaFocusConfig.FOCUS_DURATIONS[i] == totalMs
             val btn = TextView(ctx).apply {
                 text = label
                 textSize = 13f
@@ -340,12 +380,12 @@ class LuminaFocusService : Service() {
                 }
                 setPadding(0, dp(10), 0, dp(10))
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    if (i < DURATION_LABELS.size - 1) rightMargin = dp(8)
+                    if (i < LuminaFocusConfig.FOCUS_DURATION_LABELS.size - 1) rightMargin = dp(8)
                 }
             }
             btn.setOnClickListener {
                 if (isRunning) return@setOnClickListener
-                totalMs = DURATIONS[i]
+                totalMs = LuminaFocusConfig.FOCUS_DURATIONS[i]
                 remainingMs = totalMs
                 // Update all buttons
                 for (j in 0 until durRow.childCount) {
@@ -500,10 +540,10 @@ class LuminaFocusService : Service() {
             override fun run() {
                 phraseIndex = (phraseIndex + 1) % PHRASES.size
                 phraseView.post { phraseView.text = PHRASES[phraseIndex] }
-                phraseHandler.postDelayed(this, 2 * 60 * 1000L)
+                phraseHandler.postDelayed(this,LuminaFocusConfig.PHRASE_ROTATION_INTERVAL_MS)
             }
         }
-        phraseHandler.postDelayed(phraseRunnable!!, 2 * 60 * 1000L)
+        phraseHandler.postDelayed(phraseRunnable!!, LuminaFocusConfig.PHRASE_ROTATION_INTERVAL_MS)
     }
 
     private fun stopPhraseLoop() {
@@ -520,7 +560,14 @@ class LuminaFocusService : Service() {
                 override fun run() {
                     volumeHeldSeconds++
                     // Update progress bar
-                    val fillPct = (volumeHeldSeconds / 10f)
+                    val fillPct =
+                                (
+                                    volumeHeldSeconds.toFloat() /
+                                    (
+                                        LuminaFocusConfig
+                                            .VOLUME_HOLD_EXIT_DURATION_MS / 1000f
+                                    )
+                                )
                     overlayView?.findViewWithTag<View>("volFill")?.let { fill ->
                         val parent = fill.parent as? FrameLayout ?: return@let
                         fill.post {
@@ -529,14 +576,17 @@ class LuminaFocusService : Service() {
                             fill.requestLayout()
                         }
                     }
-                    if (volumeHeldSeconds >= 10) {
+                    if (volumeHeldSeconds >=     (
+                        LuminaFocusConfig
+                            .VOLUME_HOLD_EXIT_DURATION_MS / 1000
+                    )) {
                         exitEarly()
                     } else {
-                        volumeHoldHandler.postDelayed(this, 1000)
+                        volumeHoldHandler.postDelayed(this, LuminaFocusConfig.VOLUME_HOLD_TICK_INTERVAL_MS)
                     }
                 }
             }
-            volumeHoldHandler.postDelayed(volumeHoldRunnable!!, 1000)
+            volumeHoldHandler.postDelayed(volumeHoldRunnable!!, LuminaFocusConfig.VOLUME_HOLD_TICK_INTERVAL_MS)
 
         } else if (!pressed) {
             cancelVolumeHold()
