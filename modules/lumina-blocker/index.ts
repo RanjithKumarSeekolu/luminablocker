@@ -251,5 +251,16 @@ export function isFocusModeActive(): boolean {
 export function addFocusCompleteListener(
   callback: (event: { completed: boolean }) => void,
 ) {
-  return emitter.addListener("onFocusComplete", callback);
+  // Cast event name to any to satisfy differing native event type definitions
+  return emitter.addListener("onFocusComplete" as any, callback);
+}
+
+// ── Native Focus Lock Activity ─────────────────────────────
+
+export function startFocusLock(durationMs: number): void {
+  return LuminaBlocker.startFocusLock(durationMs);
+}
+
+export function isVolumeExitAllowed(): boolean {
+  return LuminaBlocker.isVolumeExitAllowed();
 }

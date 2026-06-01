@@ -20,6 +20,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.os.Build
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
 
 /**
  * Fullscreen mindful breathing overlay shown above blocked apps.
@@ -47,6 +51,9 @@ class BreathOverlayService : Service() {
     private var proceedBtnView: TextView? = null
     private var cancelBtnView: TextView? = null
 
+    private var openCount = 0
+    private var usageMs = 0L
+
     companion object {
         const val TAG = "BreathOverlayService"
 
@@ -58,12 +65,16 @@ class BreathOverlayService : Service() {
             context: Context,
             blockedPackage: String,
             level: Int,
-            countdownMs: Long
+            countdownMs: Long,
+            openCount: Int,
+            usageMs: Long
         ) {
             val intent = Intent(context, BreathOverlayService::class.java).apply {
                 putExtra(EXTRA_PACKAGE, blockedPackage)
                 putExtra(EXTRA_LEVEL, level)
                 putExtra(EXTRA_COUNTDOWN, countdownMs)
+                putExtra("openCount", openCount)
+                putExtra("usageMs", usageMs)
             }
 
             context.startService(intent)
@@ -91,6 +102,7 @@ class BreathOverlayService : Service() {
         startId: Int
     ): Int {
 
+
         blockedPackage =
             intent?.getStringExtra(EXTRA_PACKAGE) ?: ""
 
@@ -99,6 +111,9 @@ class BreathOverlayService : Service() {
 
         countdownMs =
             intent?.getLongExtra(EXTRA_COUNTDOWN, 0L) ?: 0L
+
+        openCount = intent?.getIntExtra("openCount", 0) ?: 0
+        usageMs = intent?.getLongExtra("usageMs", 0L) ?: 0L
 
         Log.d(
             TAG,
@@ -205,6 +220,16 @@ class BreathOverlayService : Service() {
     // ─────────────────────────────────────────────────────────────
     // UI
     // ─────────────────────────────────────────────────────────────
+
+    private fun buildUsageString(openCount: Int, usageMs: Long): String {
+        val mins = usageMs / 60000
+        val usageStr = when {
+            mins >= 60 -> "${mins / 60}h ${mins % 60}m"
+            mins > 0   -> "${mins}m"
+            else       -> "< 1m"
+        }
+        return "Opened ${openCount}x today  ·  ${usageStr} today"
+    }
 
     private fun buildOverlayView(appLabel: String): FrameLayout {
 
@@ -478,6 +503,23 @@ class BreathOverlayService : Service() {
                     ).apply {
                         bottomMargin = dpToPx(24)
                     }
+            }
+        )
+
+        // ─────────────────────────────────────────────────────────
+        // Usage message dynamic
+        // ─────────────────────────────────────────────────────────
+
+        content.addView(
+            TextView(this).apply {
+                text = buildUsageString(openCount, usageMs)
+                textSize = 13f
+                setTextColor(Color.parseColor("#8a4a2a"))
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dpToPx(16) }
             }
         )
 

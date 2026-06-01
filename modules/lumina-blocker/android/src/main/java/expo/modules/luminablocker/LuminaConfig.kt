@@ -53,6 +53,15 @@ object LuminaConfig {
     // Score 11+   → Level 4 (deep,    15 s countdown)
     object Levels {
 
+        // ── Score → Level mapping ─────────────────────────────────────
+        // Max delta per open = 10 (usageTime +3, frequency +3, reopenGap +3, timeContext +1)
+        //
+        // Score  0–6  → Level 0  no overlay
+        // Score  7–13 → Level 1  Gentle    (0s  countdown)
+        // Score 14–20 → Level 2  Moderate  (5s  countdown)
+        // Score 21–27 → Level 3  Focused   (10s countdown)
+        // Score 28+   → Level 4  Deep      (15s countdown)
+
         const val LEVEL_1_MIN = 7
         const val LEVEL_2_MIN = 14
         const val LEVEL_3_MIN = 21

@@ -104,7 +104,10 @@ object SessionTracker {
 
             lastOpenKey(packageName),
 
-            allowUntilKey(packageName)
+            allowUntilKey(packageName),
+
+            hourlyOpenKey(packageName),
+            hourlyWindowKey(packageName),
         )
 
         val editor =
@@ -692,10 +695,20 @@ object SessionTracker {
      * Starts the session timer if not already running.
      * Increments the rolling-hour open counter.
      */
+
+     private fun lastIncrementKey(packageName: String) = "last_increment_$packageName"
+
     fun onAppOpened(ctx: Context, packageName: String) {
-        generateDailySnapshotIfNeeded(ctx)
         val prefs = prefs(ctx)
         val now   = System.currentTimeMillis()
+
+        // Debounce — ignore if incremented within last 2 seconds
+        val lastIncrement = prefs.getLong(lastIncrementKey(packageName), 0L)
+        if (now - lastIncrement < 2000L) return   // ← skip duplicate call
+        prefs.edit().putLong(lastIncrementKey(packageName), now).apply()
+
+        generateDailySnapshotIfNeeded(ctx)
+
 
         // Start session timer only if no session is running
         val sessionStart = prefs.getLong(KEY_SESSION_START, 0L)
@@ -707,17 +720,16 @@ object SessionTracker {
         prefs.edit().putString(KEY_LAST_ACTIVE_PACKAGE, packageName).apply()
 
         // Rolling 1-hour open counter
-        val windowStart = prefs.getLong(KEY_OPEN_WINDOW_START, now)
-        val openCount   = prefs.getInt(KEY_OPEN_COUNT, 0)
+        val windowStart = prefs.getLong(hourlyWindowKey(packageName), now)
+        val hourlyCount = prefs.getInt(hourlyOpenKey(packageName), 0)
 
         if (now - windowStart > 60 * 60 * 1000L) {
-            // Window expired — start fresh
             prefs.edit()
-                .putLong(KEY_OPEN_WINDOW_START, now)
-                .putInt(KEY_OPEN_COUNT, 1)
+                .putLong(hourlyWindowKey(packageName), now)
+                .putInt(hourlyOpenKey(packageName), 1)
                 .apply()
         } else {
-            prefs.edit().putInt(KEY_OPEN_COUNT, openCount + 1).apply()
+            prefs.edit().putInt(hourlyOpenKey(packageName), hourlyCount + 1).apply()
         }
     }
 
@@ -1008,9 +1020,16 @@ object SessionTracker {
     fun getLastSessionDurationMs(ctx: Context): Long =
         prefs(ctx).getLong(KEY_LAST_SESSION_DURATION, 0L)
 
-    /** How many times the app was opened in the rolling 1-hour window. */
-    fun getOpenCountThisHour(ctx: Context): Int =
-        prefs(ctx).getInt(KEY_OPEN_COUNT, 0)
+    private fun hourlyOpenKey(packageName: String) = "hourly_open_$packageName"
+    private fun hourlyWindowKey(packageName: String) = "hourly_window_$packageName"
+
+    fun getOpenCountThisHour(ctx: Context, packageName: String): Int {
+        val prefs = prefs(ctx)
+        val now = System.currentTimeMillis()
+        val windowStart = prefs.getLong(hourlyWindowKey(packageName), now)
+        if (now - windowStart > 60 * 60 * 1000L) return 0
+        return prefs.getInt(hourlyOpenKey(packageName), 0)
+    }
 
     /**
      * Time since the app was last left.

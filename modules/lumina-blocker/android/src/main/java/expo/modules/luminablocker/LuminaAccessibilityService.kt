@@ -36,39 +36,76 @@ class LuminaAccessibilityService : AccessibilityService() {
         Log.d(TAG, "✅ Service connected")
     }
 
+    private fun relaunchFocusActivity(ctx: Context) {
+        val intent = Intent(ctx, FocusLockActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_NO_HISTORY
+            )
+        }
+        ctx.startActivity(intent)
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val ctx = applicationContext
 
         // ── Focus mode guard ──────────────────────────────────────
         // If focus mode is active, intercept any escape attempt
-        if (LuminaFocusService.isActive) {
-            val pkg = event?.packageName?.toString() ?: return
+        // if (LuminaFocusService.isActive) {
+        //     val pkg = event?.packageName?.toString() ?: return
 
-            val isLauncher = pkg.contains("launcher") ||
-                             pkg == "com.android.launcher" ||
-                             pkg == "com.google.android.apps.nexuslauncher"
-            val isRecents  = pkg == "com.android.systemui"
+        //     Log.d(
+        //         TAG,
+        //         "Focus active: pkg=$pkg"
+        //     )
 
-            if (isLauncher || isRecents) {
-                val launchIntent = ctx.packageManager
-                    .getLaunchIntentForPackage(ctx.packageName)
-                    ?.apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                    }
-                if (launchIntent != null) ctx.startActivity(launchIntent)
-                return
-            }
+        //     val isEscapeAttempt =
+        //         pkg.contains("launcher") ||
+        //         pkg == "com.android.launcher" ||
+        //         pkg == "com.google.android.apps.nexuslauncher" ||
+        //         pkg == "com.android.systemui" ||          // recents + lock screen
+        //         pkg.contains("keyguard") ||               // any vendor's lock screen
+        //         pkg.contains("lockscreen")                // Samsung DeX / MIUI etc.
 
-            // Block all other apps too during focus mode
-            if (pkg != ctx.packageName) return
+        //     if (isEscapeAttempt) {
+        //         val intent = Intent(ctx, FocusLockActivity::class.java).apply {
+        //             addFlags(
+        //                 Intent.FLAG_ACTIVITY_NEW_TASK or
+        //                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
+        //                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+        //                 Intent.FLAG_ACTIVITY_NO_HISTORY
+        //             )
+        //         }
+        //         ctx.startActivity(intent)
+        //         return
+        //     }
+
+        //     // Block all other apps too during focus mode
+        //     if (pkg != ctx.packageName) return
+        // }
+
+            if (LuminaFocusService.isActive) {
+        val pkg = event?.packageName?.toString() ?: return
+
+        // Allow only our own package
+        if (pkg == ctx.packageName) return
+
+            // Block and relaunch for every other package including
+            // systemui, keyguard, launcher, lock screen — everything
+            android.util.Log.d(TAG, "Focus active, blocking pkg=$pkg — relaunching")
+            relaunchFocusActivity(ctx)
+            return
         }
 
         // ── Normal flow below ─────────────────────────────────────
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val packageName = event.packageName?.toString() ?: return
+        val className = event.className?.toString() ?: ""
 
+        if (!className.contains("Activity")) return
         if (packageName == applicationContext.packageName) return
 
         val prefs = ctx.getSharedPreferences("LuminaPrefs", Context.MODE_PRIVATE)
@@ -140,7 +177,11 @@ class LuminaAccessibilityService : AccessibilityService() {
 
         prefs.edit().putBoolean("breathScreenActive", true).apply()
 
-        BreathOverlayService.start(ctx, packageName, level, countdownMs)
+        val openCount = SessionTracker.getOpenCountThisHour(ctx, packageName)
+        val usageMs = SessionTracker.getTotalUsageMs(ctx, packageName)
+
+        BreathOverlayService.start(ctx, packageName, level, countdownMs, openCount, usageMs)
+
 
         LuminaBlockerModule.emitEvent(
             "onBlockedAppDetected",

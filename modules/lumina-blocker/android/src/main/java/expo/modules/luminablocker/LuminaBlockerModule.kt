@@ -288,5 +288,38 @@ class LuminaBlockerModule : Module() {
         Function("isFocusModeActive") {
             LuminaFocusService.isActive
         }
+
+        //-- focus lock -----
+
+        Function("isVolumeExitAllowed") {
+            LuminaFocusConfig.ALLOW_VOLUME_EXIT
+        }
+        
+        Function(
+            "startFocusLock"
+        ) { durationMs: Long ->
+
+            val activity =
+                appContext.currentActivity
+                    ?: return@Function null
+
+            val intent =
+                Intent(
+                    activity,
+                    FocusLockActivity::class.java
+                ).apply {
+
+                    putExtra(
+                        "durationMs",
+                        durationMs
+                    )
+                }
+
+            activity.startActivity(
+                intent
+            )
+
+            null
+        }
     }
 }

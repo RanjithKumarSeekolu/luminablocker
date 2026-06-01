@@ -33,7 +33,7 @@ object ScoreEngine {
 
         // Individual signal deltas
         val usageDelta = usageTimeScore(ctx)
-        val frequencyDelta = frequencyScore(ctx)
+        val frequencyDelta = frequencyScore(ctx, packageName)
         val reopenDelta = reopenGapScore(ctx)
         val timeDelta = timeContextScore()
 
@@ -48,10 +48,6 @@ object ScoreEngine {
 
         val newScore =
             (previousScore + totalDelta).coerceAtLeast(0)
-
-        // Current package
-        val packageName =
-            SessionTracker.getLastActivePackage(ctx)
 
         // Human-readable app name
         val appLabel = try {
@@ -95,7 +91,7 @@ object ScoreEngine {
         if (frequencyDelta > 0) {
 
             val opens =
-                SessionTracker.getOpenCountThisHour(ctx)
+                SessionTracker.getOpenCountThisHour(ctx, packageName)
 
             HistoryTracker.addEvent(
                 ctx,
@@ -165,8 +161,8 @@ object ScoreEngine {
 
     // ── Signal: open frequency (rolling 1-hour window) ───────────
 
-    private fun frequencyScore(ctx: Context): Int {
-        val opens = SessionTracker.getOpenCountThisHour(ctx)
+    private fun frequencyScore(ctx: Context, packageName: String): Int {
+        val opens = SessionTracker.getOpenCountThisHour(ctx, packageName)
 
         val score = when {
             opens >= LuminaConfig.Frequency.TIER_3_OPENS ->

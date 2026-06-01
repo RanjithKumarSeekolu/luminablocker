@@ -9,6 +9,7 @@ import android.view.*
 import android.widget.*
 import androidx.core.app.NotificationCompat
 import expo.modules.luminablocker.LuminaFocusConfig
+import android.util.Log
 
 class LuminaFocusService : Service() {
 
@@ -47,6 +48,9 @@ class LuminaFocusService : Service() {
         }
     }
 
+    private var enforcementHandler = Handler(Looper.getMainLooper())
+    private var enforcementRunnable: Runnable? = null
+
     companion object {
         const val CHANNEL_ID      = "lumina_focus"
         const val NOTIF_ID        = 42
@@ -54,7 +58,15 @@ class LuminaFocusService : Service() {
         const val ACTION_VOLUME_DOWN = "lumina.VOLUME_DOWN_PRESSED"
         const val EXTRA_PRESSED   = "pressed"
 
-        @Volatile var isActive = false
+        @Volatile
+        var isActive = false
+            set(value) {
+                android.util.Log.d(
+                    "LUMINA",
+                    "isActive -> $value"
+                )
+                field = value
+            }
 
         private val PHRASES = listOf(
             "Your phone cannot reach you here.\nStay present.",
@@ -85,8 +97,18 @@ class LuminaFocusService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        android.util.Log.d(
+            "LUMINA",
+            "SERVICE CREATED hash=${System.identityHashCode(this)}"
+        )
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         isActive = true
+        getSharedPreferences(
+            "LuminaPrefs",
+            MODE_PRIVATE
+        ).edit()
+            .putBoolean("focus_active", true)
+            .apply()
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification("Focus mode active"))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -96,20 +118,71 @@ class LuminaFocusService : Service() {
         }
     }
 
+    private fun startEnforcementLoop() {
+        enforcementRunnable = object : Runnable {
+            override fun run() {
+                if (!isActive) return
+                val intent = Intent(
+                    applicationContext,
+                    FocusLockActivity::class.java
+                ).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_NO_HISTORY
+                    )
+                }
+                try {
+                    applicationContext.startActivity(intent)
+                } catch (_: Exception) {}
+                enforcementHandler.postDelayed(this, 800) // every 800ms
+            }
+        }
+        enforcementHandler.post(enforcementRunnable!!)
+    }
+
+    private fun stopEnforcementLoop() {
+        enforcementRunnable?.let { enforcementHandler.removeCallbacks(it) }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         totalMs    = intent?.getLongExtra(EXTRA_DURATION, LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS) ?: (LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS)
         remainingMs = totalMs
         showOverlay()
+        startEnforcementLoop()
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+
+        android.util.Log.d(
+            "LUMINA",
+            "onTaskRemoved"
+        )
+    }
+
     override fun onDestroy() {
+        android.util.Log.d(
+            "LUMINA",
+            "SERVICE onDestroy START"
+        )
         super.onDestroy()
+        android.util.Log.d(
+            "LUMINA",
+            "LuminaFocusService destroyed"
+        )
         isActive = false
+        stopEnforcementLoop()
         stopTimer()
         stopPhraseLoop()
         removeOverlay()
         try { unregisterReceiver(volumeReceiver) } catch (e: Exception) {}
+        android.util.Log.d(
+            "LUMINA",
+            "SERVICE onDestroy END"
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -125,13 +198,15 @@ class LuminaFocusService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
-                @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
+                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
+
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_FULLSCREEN or
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
+
             PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -155,6 +230,10 @@ class LuminaFocusService : Service() {
     }
 
     private fun removeOverlay() {
+         android.util.Log.d(
+            "LUMINA",
+            "Removing overlay"
+        )
         overlayView?.let {
             try { windowManager?.removeView(it) } catch (e: Exception) {}
         }
@@ -343,6 +422,8 @@ class LuminaFocusService : Service() {
         volProgressBg.addView(volProgressFill)
         volCard.addView(volProgressBg)
         root.addView(volCard)
+        Log.d("LUMINA", "Volume exit allowed: ${LuminaFocusConfig.ALLOW_VOLUME_EXIT}")
+        volCard.visibility = if (LuminaFocusConfig.ALLOW_VOLUME_EXIT) View.VISIBLE else View.GONE
 
         // ── Session stats row ─────────────────────────────────────
         val statsRow = LinearLayout(ctx).apply {
@@ -553,6 +634,7 @@ class LuminaFocusService : Service() {
     // ── Volume hold ───────────────────────────────────────────────
 
     fun onVolumeDown(pressed: Boolean) {
+        if (!LuminaFocusConfig.ALLOW_VOLUME_EXIT) return
         if (pressed && !isVolumeHolding) {
             isVolumeHolding = true
             volumeHeldSeconds = 0
@@ -612,6 +694,12 @@ class LuminaFocusService : Service() {
             "onFocusComplete",
             mapOf("completed" to false)
         )
+        getSharedPreferences(
+            "LuminaPrefs",
+            MODE_PRIVATE
+        ).edit()
+            .putBoolean("focus_active", false)
+            .apply()
         stopSelf()
     }
 

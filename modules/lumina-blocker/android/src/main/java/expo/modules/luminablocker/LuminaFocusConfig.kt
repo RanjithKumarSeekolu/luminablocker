@@ -22,6 +22,8 @@ object LuminaFocusConfig {
         60 * 60 * 1000L
     )
 
+    const val ALLOW_VOLUME_EXIT = false
+
     val FOCUS_DURATION_LABELS = listOf(
         "15m",
         "25m",

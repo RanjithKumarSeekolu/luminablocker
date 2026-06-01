@@ -1,53 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Permissions -->
 
-  <queries>
-    <intent>
-      <action android:name="android.intent.action.MAIN" />
-      <category android:name="android.intent.category.LAUNCHER" />
-    </intent>
-  </queries>
+    <uses-permission
+        android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
-  <application>
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE" />
 
-    <service
-        android:name="expo.modules.luminablocker.LuminaAccessibilityService"
-        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-        android:exported="true"
-        tools:replace="android:exported">
-      <intent-filter>
-        <action android:name="android.accessibilityservice.AccessibilityService" />
-      </intent-filter>
-      <meta-data
-          android:name="android.accessibilityservice"
-          android:resource="@xml/lumina_accessibility_config" />
-    </service>
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <service
-        android:name="expo.modules.luminablocker.BreathOverlayService"
-        android:exported="false" />
+    <!-- Query launchable apps -->
 
-    <!--
-      Focus mode foreground service — draws a persistent fullscreen overlay
-      and keeps a foreground notification so Android won't kill it.
-      foregroundServiceType="specialUse" is required on Android 14+
-      for services that don't fit a predefined type (camera, location, etc.)
-    -->
-    <service
-        android:name="expo.modules.luminablocker.LuminaFocusService"
-        android:foregroundServiceType="specialUse"
-        android:exported="false">
-      <property
-          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-          android:value="Focus mode overlay that blocks distracting apps during deep work sessions" />
-    </service>
+    <queries>
+        <intent>
+            <action
+                android:name="android.intent.action.MAIN" />
 
-  </application>
+            <category
+                android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application>
+
+        <!-- Accessibility Service -->
+
+        <service
+            android:name="expo.modules.luminablocker.LuminaAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            tools:replace="android:exported">
+
+            <intent-filter>
+                <action
+                    android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/lumina_accessibility_config" />
+
+        </service>
+
+        <!-- Overlay Service -->
+
+        <service
+            android:name="expo.modules.luminablocker.BreathOverlayService"
+            android:exported="false" />
+
+        <!-- Focus Service -->
+
+        <service
+            android:name="expo.modules.luminablocker.LuminaFocusService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <!-- Lock Activity -->
+
+        <activity
+            android:name="expo.modules.luminablocker.FocusLockActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+
+    </application>
 
 </manifest>
