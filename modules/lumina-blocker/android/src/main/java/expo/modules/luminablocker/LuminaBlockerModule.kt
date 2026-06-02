@@ -321,5 +321,17 @@ class LuminaBlockerModule : Module() {
 
             null
         }
+
+        Function("getTodayFocusMs") {
+            FocusSessionStore.getTodayTotalMs(appContext.reactContext!!)
+        }
+
+        Function("getWeeklyFocusData") {
+            FocusSessionStore.getWeeklyData(appContext.reactContext!!)
+        }
+
+        Function("getAllFocusSessions") {
+            FocusSessionStore.getAllSessions(appContext.reactContext!!)
+        }
     }
 }

@@ -594,23 +594,25 @@ class LuminaFocusService : Service() {
     ) {
         isRunning = false
         stopPhraseLoop()
+
+        // ← Save FIRST
+        FocusSessionStore.saveSession(
+            applicationContext,
+            totalMs,  // completed = always full duration
+            true
+        )
+
         todayTotalMinutes += (totalMs / 60000).toInt()
         sessionNumber++
-
-        // Update stats in overlay
         overlayView?.findViewWithTag<TextView>("session")?.text = ordinal(sessionNumber)
         overlayView?.findViewWithTag<TextView>("todayTotal")?.text = "${todayTotalMinutes}m"
-
         phraseView.text = "Session complete.\nWell done — take a short break."
         startBtn.text = "▶  Start focus session"
         durRow.alpha = 1f
-        remainingMs = totalMs
+        remainingMs = totalMs  // ← reset AFTER save
         ringView.updateProgress(totalMs, remainingMs)
 
-        LuminaBlockerModule.emitEvent(
-            "onFocusComplete",
-            mapOf("completed" to true)
-        )
+        LuminaBlockerModule.emitEvent("onFocusComplete", mapOf("completed" to true))
         updateNotification("Session complete!")
     }
 
@@ -700,6 +702,12 @@ class LuminaFocusService : Service() {
         ).edit()
             .putBoolean("focus_active", false)
             .apply()
+
+        FocusSessionStore.saveSession(
+            applicationContext,
+            totalMs - remainingMs,  // actual time spent
+            false
+        )
         stopSelf()
     }
 

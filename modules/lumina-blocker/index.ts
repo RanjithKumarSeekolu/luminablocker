@@ -29,6 +29,21 @@ export type BlockedAppEvent = {
   score: number;
 };
 
+// ── Focus session data ────────────────────────────────────────
+
+export type FocusSession = {
+  date: string;
+  durationMs: number;
+  completed: boolean;
+  timestamp: number;
+};
+
+export type WeeklyFocusDay = {
+  date: string;
+  totalMs: number;
+  sessionCount: number;
+};
+
 type LuminaBlockerEvents = {
   onBlockedAppDetected: (payload: BlockedAppEvent) => void;
 };
@@ -263,4 +278,19 @@ export function startFocusLock(durationMs: number): void {
 
 export function isVolumeExitAllowed(): boolean {
   return LuminaBlocker.isVolumeExitAllowed();
+}
+
+/** Today's total focus time in milliseconds */
+export function getTodayFocusMs(): number {
+  return LuminaBlocker.getTodayFocusMs();
+}
+
+/** Last 7 days of focus data — index 0 = today, index 6 = 6 days ago */
+export function getWeeklyFocusData(): WeeklyFocusDay[] {
+  return LuminaBlocker.getWeeklyFocusData();
+}
+
+/** All focus sessions as raw JSON string */
+export function getAllFocusSessions(): FocusSession[] {
+  return JSON.parse(LuminaBlocker.getAllFocusSessions());
 }

@@ -203,7 +203,7 @@ export default function FocusScreen() {
   // ─────────────────────────────────────────
 
   const handleStart = () => {
-    const totalMinutes = Math.max(5, minutes);
+    const totalMinutes = Math.max(0, minutes);
 
     setCompleted(false);
 
@@ -329,7 +329,7 @@ export default function FocusScreen() {
             style={styles.adjustBtn}
             disabled={isRunning}
             onPress={() => {
-              const next = Math.max(5, minutes - 5);
+              const next = Math.max(0, minutes - 5);
 
               setMinutes(next);
             }}

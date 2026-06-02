@@ -82,6 +82,11 @@ class FocusLockActivity : Activity() {
                 if (
                     remainingSeconds <= 0
                 ) {
+                    FocusSessionStore.saveSession(
+                        applicationContext,
+                        intent.getLongExtra("durationMs", 0L),
+                        true
+                    )
 
                     exitFocusMode()
 

@@ -9,6 +9,8 @@ import {
   getDailySnapshots,
   getHistoricalDailyUsage,
   getInstalledApps,
+  getTodayFocusMs,
+  getWeeklyFocusData,
   getWeeklyUsageForApp,
   hasUsagePermission,
   isAccessibilityEnabled,
@@ -17,6 +19,7 @@ import {
   openUsageAccessSettings,
   saveBlockedApps,
   type InstalledApp,
+  type WeeklyFocusDay,
 } from "@/modules/lumina-blocker";
 
 import { router, useFocusEffect } from "expo-router";
@@ -216,6 +219,9 @@ export default function AppPickerScreen() {
 
   const [dailyHistory, setDailyHistory] = useState<DailySnapshot[]>([]);
 
+  const [todayFocusMs, setTodayFocusMs] = useState(0);
+  const [weeklyFocus, setWeeklyFocus] = useState<WeeklyFocusDay[]>([]);
+
   const [weeklyUsageMap, setWeeklyUsageMap] = useState<
     Record<string, WeeklyUsageDay[]>
   >({});
@@ -253,6 +259,11 @@ export default function AppPickerScreen() {
     setDailyHistory(history);
   }, [selected]);
 
+  const loadFocusData = () => {
+    setTodayFocusMs(getTodayFocusMs());
+    setWeeklyFocus(getWeeklyFocusData());
+  };
+
   useEffect(() => {
     if (selected.size > 0) {
       loadWeeklyUsage([...selected]);
@@ -269,6 +280,7 @@ export default function AppPickerScreen() {
     setSelected(new Set(getBlockedApps()));
 
     setSnapshots(getDailySnapshots());
+    loadFocusData();
   }, []);
 
   // ───────────────────────────────────────────────────────────
@@ -287,6 +299,7 @@ export default function AppPickerScreen() {
 
       setAppScores(scores);
       setSnapshots(getDailySnapshots());
+      loadFocusData();
       loadWeeklyUsage([...selected]);
       loadDailyHistory();
     }, []),
@@ -327,6 +340,7 @@ export default function AppPickerScreen() {
 
       setAppScores(scores);
       setSnapshots(getDailySnapshots());
+      loadFocusData();
 
       loadWeeklyUsage([...selected]);
       loadDailyHistory();
@@ -626,6 +640,109 @@ export default function AppPickerScreen() {
             );
           })
         )}
+      </View>
+
+      {/**Focus Data*/}
+
+      {/* Focus Stats */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Focus</Text>
+
+        <TouchableOpacity
+          onPress={() => router.push("/FocusHistory")}
+          style={styles.historyBtn}
+        >
+          <Text style={styles.historyBtnText}>History</Text>
+        </TouchableOpacity>
+
+        {/* Today */}
+        <View
+          style={{
+            backgroundColor: "#17201c",
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: "#5a7a68",
+              fontSize: 12,
+              fontFamily: "DMSans_400Regular",
+            }}
+          >
+            Today
+          </Text>
+          <Text
+            style={{
+              color: "#4caf7d",
+              fontSize: 28,
+              fontFamily: "DMSans_600SemiBold",
+              marginTop: 4,
+            }}
+          >
+            {formatUsage(todayFocusMs)}
+          </Text>
+          <Text
+            style={{
+              color: "#5a7a68",
+              fontSize: 12,
+              fontFamily: "DMSans_400Regular",
+              marginTop: 2,
+            }}
+          >
+            deep work
+          </Text>
+        </View>
+
+        {/* Weekly bars */}
+        <View
+          style={{ backgroundColor: "#17201c", borderRadius: 16, padding: 16 }}
+        >
+          <Text
+            style={{
+              color: "#e8f0eb",
+              fontSize: 14,
+              fontFamily: "DMSans_600SemiBold",
+              marginBottom: 16,
+            }}
+          >
+            This week
+          </Text>
+          <View style={styles.weekBars}>
+            {weeklyFocus.map((day, i) => {
+              const maxMs = Math.max(...weeklyFocus.map((d) => d.totalMs), 1);
+              const height =
+                day.totalMs === 0
+                  ? 8
+                  : Math.max(12, (day.totalMs / maxMs) * 72);
+              const isToday = i === 0;
+              return (
+                <View key={i} style={styles.barContainer}>
+                  <Text style={styles.barUsage}>
+                    {day.totalMs > 0 ? formatUsage(day.totalMs) : ""}
+                  </Text>
+                  <View
+                    style={[
+                      styles.weekBar,
+                      {
+                        height,
+                        backgroundColor: isToday ? "#4caf7d" : "#2f7a57",
+                      },
+                    ]}
+                  />
+                  <Text style={styles.barLabel}>
+                    {" "}
+                    {new Date(day.date + "T00:00:00").toLocaleDateString(
+                      "en-US",
+                      { weekday: "short" },
+                    )}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
       </View>
 
       {/* App Picker */}
