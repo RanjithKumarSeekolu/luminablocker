@@ -5,7 +5,7 @@ import { fetchAiInsights, type AiInsight } from "@/services/aiInsights";
 import { getStore, refreshLuminaStore, subscribe } from "@/store/luminaStore";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
   Image,
@@ -44,13 +44,15 @@ const AI_TONE_COLORS = {
 function GrowthInsightCard({
   insight,
   loading,
+  error,
   onPress,
 }: {
   insight?: AiInsight;
   loading: boolean;
+  error: boolean;
   onPress: () => void;
 }) {
-  if (!insight && !loading) return null;
+  if (!insight && !loading && !error) return null;
 
   return (
     <TouchableOpacity
@@ -71,10 +73,15 @@ function GrowthInsightCard({
         <Text style={styles.growthInsightText}>
           {loading
             ? "Analyzing your recent usage pattern..."
-            : insight?.body}
+            : insight?.body ??
+              "Insights are temporarily unavailable. We’ll try again when your usage refreshes."
+          }
         </Text>
         {insight && (
           <Text style={styles.growthInsightAction}>See more  →</Text>
+        )}
+        {!insight && error && (
+          <Text style={styles.growthInsightAction}>AI unavailable</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -374,16 +381,21 @@ export default function Reflect() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(false);
   const [showInsightsModal, setShowInsightsModal] = useState(false);
+  const aiRequestId = useRef(0);
 
   const refresh = useCallback(async () => {
+    const requestId = ++aiRequestId.current;
     try {
       await refreshLuminaStore();
+      if (requestId !== aiRequestId.current) return;
       const next = { ...getStore() };
       setData(next);
 
       if (next.focusTargets.length === 0) {
-        setAiInsights([]);
+        // Keep the last valid insight during a transient native refresh. A
+        // later refresh can restore targets without making the card flicker.
         setAiError(false);
+        setAiLoading(false);
         return;
       }
 
@@ -394,14 +406,27 @@ export default function Reflect() {
           next.focusTargets,
           next.weeklyUsageMap,
         );
-        setAiInsights(insights);
+        if (requestId !== aiRequestId.current) return;
+        // Some hosted/free models can return an empty array. Never replace a
+        // useful card with an empty result from a later refresh.
+        if (insights.length > 0) {
+          setAiInsights(insights);
+        }
       } catch {
-        setAiError(true);
+        if (requestId === aiRequestId.current) {
+          setAiError(true);
+        }
       } finally {
-        setAiLoading(false);
+        if (requestId === aiRequestId.current) {
+          setAiLoading(false);
+        }
       }
     } catch {
       // Native permission/state changes should not break the Reflect screen.
+      if (requestId === aiRequestId.current) {
+        setAiLoading(false);
+        setAiError(true);
+      }
     }
   }, []);
 
@@ -453,6 +478,7 @@ export default function Reflect() {
         <GrowthInsightCard
           insight={aiInsights[0]}
           loading={aiLoading}
+          error={aiError}
           onPress={() => setShowInsightsModal(true)}
         />
         <TimeDistribution snapshot={data.snapshot} />

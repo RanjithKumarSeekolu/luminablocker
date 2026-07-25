@@ -71,8 +71,24 @@ function parseModelInsights(content: unknown): AiInsight[] {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-  const parsed = JSON.parse(text);
-  const items = Array.isArray(parsed) ? parsed : parsed.insights;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Some free providers prepend a short explanation despite the JSON-only
+    // instruction. Recover the JSON object/array instead of dropping the card.
+    const objectStart = text.indexOf("{");
+    const objectEnd = text.lastIndexOf("}");
+    const arrayStart = text.indexOf("[");
+    const arrayEnd = text.lastIndexOf("]");
+    const start = objectStart >= 0 ? objectStart : arrayStart;
+    const end = objectStart >= 0 ? objectEnd : arrayEnd;
+    if (start < 0 || end <= start) throw new Error("AI returned invalid JSON");
+    parsed = JSON.parse(text.slice(start, end + 1));
+  }
+  const items = Array.isArray(parsed)
+    ? parsed
+    : (parsed as { insights?: unknown }).insights;
   if (!Array.isArray(items)) throw new Error("AI returned no insights");
 
   return items.slice(0, 3).map((item, index) => ({
@@ -115,12 +131,13 @@ export async function fetchAiInsights(
     body: JSON.stringify({
       model: OPENROUTER_MODEL,
       temperature: 0.4,
-      max_tokens: 500,
+      max_tokens: 900,
+      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content:
-            "You are Lumina, a calm digital-wellbeing coach. Analyze only the supplied aggregate app-usage data. Do not diagnose mental health, shame the user, or invent facts. Return valid JSON only with an insights array containing at most 3 objects. Each object must have id, title, body, recommendation, icon, and tone. tone must be primary, success, or warning. Keep title under 60 characters, body under 180 characters, and recommendation under 160 characters. Use Ionicons names such as moon-outline, trending-up-outline, timer-outline, or sparkles-outline.",
+            content:
+            "You are Lumina, a calm digital-wellbeing coach. Analyze only the supplied aggregate app-usage data. Do not diagnose mental health, shame the user, or invent facts. Return a JSON object only with an insights array containing at most 3 objects. Do not include analysis, explanations, or markdown. Each object must have id, title, body, recommendation, icon, and tone. tone must be primary, success, or warning. Keep title under 60 characters, body under 180 characters, and recommendation under 160 characters. Use Ionicons names ending in -outline, such as moon-outline, trending-up-outline, timer-outline, or sparkles-outline.",
         },
         {
           role: "user",
