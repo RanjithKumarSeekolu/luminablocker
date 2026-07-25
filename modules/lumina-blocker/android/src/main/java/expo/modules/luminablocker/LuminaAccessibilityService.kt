@@ -94,6 +94,14 @@ class LuminaAccessibilityService : AccessibilityService() {
             return
         }
 
+        // Opening the notification shade or Quick Settings temporarily puts
+        // System UI above the app; it is not a real app-to-app transition.
+        // Keep the current app session alive so returning to it cannot trigger
+        // a new overlay in the middle of use.
+        if (packageName == "com.android.systemui") {
+            return
+        }
+
         // A visible overlay owns the blocked-app flow. Accessibility can still
         // emit window events from the target app while the overlay is present;
         // never treat those events as a new open attempt.
@@ -141,6 +149,18 @@ class LuminaAccessibilityService : AccessibilityService() {
         val isSessionActive = prefs.getBoolean("session_active_$packageName", false)
         if (isSessionActive) {
             Log.d(TAG, "🟢 Session active for $packageName — skip overlay")
+            return
+        }
+
+        // If the same package is still the foreground surface but its legacy
+        // session flag was lost, recover the session instead of interrupting
+        // active use with a new intervention.
+        if (packageName == prevForeground && prevForeground.isNotEmpty()) {
+            Log.d(TAG, "🟢 Same foreground package — restoring session for $packageName")
+            SessionTracker.startSession(ctx, packageName)
+            prefs.edit()
+                .putBoolean("session_active_$packageName", true)
+                .apply()
             return
         }
 
