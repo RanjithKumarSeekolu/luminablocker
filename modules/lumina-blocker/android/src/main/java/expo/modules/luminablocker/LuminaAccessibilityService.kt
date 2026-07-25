@@ -86,16 +86,36 @@ class LuminaAccessibilityService : AccessibilityService() {
         val now   = System.currentTimeMillis()
         val blockedApps = prefs.getStringSet("blockedApps", emptySet())?.toSet() ?: emptySet()
 
-        if (!className.contains("Activity") &&
-            lastForegroundPackage.isNotEmpty() &&
-            lastForegroundPackage in blockedApps
+        // System UI (notification shade / Quick Settings) is always above an
+        // application overlay. Close it immediately while an intervention is
+        // active so it cannot remain as a bypass surface.
+        if (packageName == "com.android.systemui" && BreathOverlayService.isActive()) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            return
+        }
+
+        // A visible overlay owns the blocked-app flow. Accessibility can still
+        // emit window events from the target app while the overlay is present;
+        // never treat those events as a new open attempt.
+        if (packageName in blockedApps && BreathOverlayService.isActive()) {
+            return
+        }
+
+        // The outgoing app can be replaced by another Activity directly (for
+        // example Instagram -> Chrome). Do not rely on the class name to infer
+        // whether the previous app actually left the foreground.
+        if (lastForegroundPackage.isNotEmpty() &&
+            lastForegroundPackage != packageName &&
+            lastForegroundPackage in blockedApps &&
+            !BreathOverlayService.isActiveFor(lastForegroundPackage)
         ) {
-            Log.d(TAG, "📴 Non-activity leave: clearing session for $lastForegroundPackage")
+            val previousPackage = lastForegroundPackage
+            Log.d(TAG, "📴 Foreground changed: clearing session for $previousPackage")
             SessionTracker.onAppLeft(ctx)
             prefs.edit()
                 .remove("allowedPackage")
                 .remove("allowedTime")
-                .putBoolean("session_active_$lastForegroundPackage", false)
+                .putBoolean("session_active_$previousPackage", false)
                 .apply()
             lastForegroundPackage = ""
         }
@@ -124,7 +144,9 @@ class LuminaAccessibilityService : AccessibilityService() {
             return
         }
 
-        SessionTracker.onAppOpened(ctx, packageName)
+        // Record the open/frequency signal now. The actual usage timer starts
+        // only after the user passes the intervention overlay.
+        SessionTracker.onAppOpened(ctx, packageName, startUsageSession = false)
 
         val scoredLevel = ScoreEngine.evaluate(ctx, packageName)
         val score = SessionTracker.getStoredScore(ctx, packageName)
@@ -152,6 +174,7 @@ class LuminaAccessibilityService : AccessibilityService() {
 
         if (level == 0) {
             Log.d(TAG, "✅ Score too low for overlay — passing through")
+            SessionTracker.startSession(ctx, packageName)
             prefs.edit()
                 .putString("allowedPackage", packageName)
                 .putLong("allowedTime", now)
@@ -163,15 +186,28 @@ class LuminaAccessibilityService : AccessibilityService() {
         val countdownMs = ScoreEngine.levelToCountdownMs(level)
         val appLabel    = getAppLabel(packageName)
 
-        prefs.edit().putBoolean("breathScreenActive", true).apply()
-
         val openCount = SessionTracker.getOpenCountThisHour(ctx, packageName)
         val usageMs = SessionTracker.getTotalUsageMs(ctx, packageName)
 
         val overlayEnabled = prefs.getBoolean("overlayEnabled", true)
 
+        if (!overlayEnabled) {
+            // The target app is allowed through when the setting is off. Keep
+            // the state consistent and start measuring real usage immediately.
+            SessionTracker.startSession(ctx, packageName)
+            prefs.edit()
+                .putString("allowedPackage", packageName)
+                .putLong("allowedTime", now)
+                .putBoolean("session_active_$packageName", true)
+                .putBoolean("breathScreenActive", false)
+                .apply()
+            return
+        }
 
-        if (!overlayEnabled) return  // skip, let app open normally
+        // Ensure a stale timer from an interrupted previous attempt cannot
+        // include the overlay delay in the next real session.
+        SessionTracker.cancelPendingSession(ctx)
+        prefs.edit().putBoolean("breathScreenActive", true).apply()
 
         BreathOverlayService.start(ctx, packageName, level, countdownMs, openCount, usageMs)
 

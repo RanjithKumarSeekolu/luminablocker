@@ -855,13 +855,17 @@ object SessionTracker {
 
     /**
      * Call when the user opens a blocked app (before ScoreEngine.evaluate).
-     * Starts the session timer if not already running.
+     * Starts the session timer if requested and not already running.
      * Increments the rolling-hour open counter.
      */
 
      private fun lastIncrementKey(packageName: String) = "last_increment_$packageName"
 
-    fun onAppOpened(ctx: Context, packageName: String) {
+    fun onAppOpened(
+        ctx: Context,
+        packageName: String,
+        startUsageSession: Boolean = true
+    ) {
         val prefs = prefs(ctx)
         val now   = System.currentTimeMillis()
 
@@ -873,10 +877,11 @@ object SessionTracker {
         generateDailySnapshotIfNeeded(ctx)
 
 
-        // Start session timer only if no session is running
-        val sessionStart = prefs.getLong(KEY_SESSION_START, 0L)
-        if (sessionStart == 0L) {
-            prefs.edit().putLong(KEY_SESSION_START, now).apply()
+        // A blocked open may be followed by a delay overlay. In that case the
+        // caller records the open attempt now and starts the real usage session
+        // only after the user chooses to continue.
+        if (startUsageSession) {
+            startSession(ctx, packageName, now)
         }
 
         // Save which package is active (so onAppLeft knows which session ended)
@@ -894,6 +899,29 @@ object SessionTracker {
         } else {
             prefs.edit().putInt(hourlyOpenKey(packageName), hourlyCount + 1).apply()
         }
+    }
+
+    /** Start timing actual foreground usage after an intervention is passed. */
+    fun startSession(ctx: Context, packageName: String) {
+        startSession(ctx, packageName, System.currentTimeMillis())
+    }
+
+    private fun startSession(ctx: Context, packageName: String, now: Long) {
+        val prefs = prefs(ctx)
+        val sessionStart = prefs.getLong(KEY_SESSION_START, 0L)
+        if (sessionStart == 0L) {
+            prefs.edit()
+                .putLong(KEY_SESSION_START, now)
+                .putString(KEY_LAST_ACTIVE_PACKAGE, packageName)
+                .apply()
+        }
+    }
+
+    /** Clear an overlay's pending open without recording overlay time as usage. */
+    fun cancelPendingSession(ctx: Context) {
+        prefs(ctx).edit()
+            .putLong(KEY_SESSION_START, 0L)
+            .apply()
     }
 
     fun getLastActivePackage(ctx: Context): String =
@@ -918,13 +946,17 @@ object SessionTracker {
                 0L
             )
 
+        // An intervention can record an open attempt without starting a real
+        // usage session. Do not overwrite the previous session duration with
+        // zero when that pending attempt is cancelled.
+        if (start <= 0L) {
+            return
+        }
+
         // Only save if a session was actually running
 
         val sessionDuration =
-            if (start > 0L)
-                now - start
-            else
-                0L
+            now - start
 
         val packageName =
             getLastActivePackage(ctx)

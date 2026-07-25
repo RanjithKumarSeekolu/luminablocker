@@ -11,12 +11,15 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.CountDownTimer
 import android.os.IBinder
+import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -57,6 +60,9 @@ class BreathOverlayService : Service() {
     companion object {
         const val TAG = "BreathOverlayService"
 
+        @Volatile
+        private var activePackage = ""
+
         const val EXTRA_PACKAGE = "BLOCKED_PACKAGE"
         const val EXTRA_LEVEL = "LEVEL"
         const val EXTRA_COUNTDOWN = "COUNTDOWN_MS"
@@ -69,6 +75,9 @@ class BreathOverlayService : Service() {
             openCount: Int,
             usageMs: Long
         ) {
+            // Mark the package synchronously so accessibility events arriving
+            // before onStartCommand cannot launch a second overlay.
+            activePackage = blockedPackage
             val intent = Intent(context, BreathOverlayService::class.java).apply {
                 putExtra(EXTRA_PACKAGE, blockedPackage)
                 putExtra(EXTRA_LEVEL, level)
@@ -81,10 +90,16 @@ class BreathOverlayService : Service() {
         }
 
         fun stop(context: Context) {
+            activePackage = ""
             context.stopService(
                 Intent(context, BreathOverlayService::class.java)
             )
         }
+
+        fun isActiveFor(packageName: String): Boolean =
+            activePackage == packageName
+
+        fun isActive(): Boolean = activePackage.isNotBlank()
     }
 
     private fun prefs() =
@@ -133,6 +148,8 @@ class BreathOverlayService : Service() {
 
         teardown()
 
+        activePackage = ""
+
         prefs().edit()
             .putBoolean("breathScreenActive", false)
             .remove("activeOverlayPackage")
@@ -153,6 +170,8 @@ class BreathOverlayService : Service() {
                 .remove("activeOverlayPackage")
                 .apply()
 
+            activePackage = ""
+
             stopSelf()
             return
         }
@@ -165,7 +184,7 @@ class BreathOverlayService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -178,7 +197,18 @@ class BreathOverlayService : Service() {
         windowManager?.addView(overlayRoot, params)
 
         overlayRoot?.isClickable = true
-        overlayRoot?.isFocusable = true
+        overlayRoot?.isFocusableInTouchMode = true
+        overlayRoot?.requestFocus()
+        overlayRoot?.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK &&
+                event.action == KeyEvent.ACTION_UP
+            ) {
+                cancelJourney()
+                true
+            } else {
+                false
+            }
+        }
 
         prefs().edit()
             .putBoolean("breathScreenActive", true)
@@ -324,20 +354,39 @@ class BreathOverlayService : Service() {
             background = circleDrawable("#1c2b24")
         }
 
-        iconCircle.addView(
-            TextView(this).apply {
+        val appIcon = try {
+            packageManager.getApplicationIcon(blockedPackage)
+        } catch (_: Exception) {
+            null
+        }
 
-                text = "🌿"
-                textSize = 22f
-                gravity = Gravity.CENTER
-
-                layoutParams =
-                    FrameLayout.LayoutParams(
+        if (appIcon != null) {
+            iconCircle.addView(
+                ImageView(this).apply {
+                    setImageDrawable(appIcon)
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    contentDescription = "$appLabel icon"
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    ).apply {
+                        setMargins(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10))
+                    }
+                }
+            )
+        } else {
+            iconCircle.addView(
+                TextView(this).apply {
+                    text = "🌿"
+                    textSize = 22f
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT
                     )
-            }
-        )
+                }
+            )
+        }
 
         content.addView(iconCircle)
 
@@ -578,6 +627,8 @@ class BreathOverlayService : Service() {
 
             textSize = 11f
             letterSpacing = 0.25f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
 
             gravity = Gravity.CENTER
 
@@ -594,11 +645,16 @@ class BreathOverlayService : Service() {
 
             layoutParams =
                 LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dpToPx(52)
                 ).apply {
                     bottomMargin = dpToPx(12)
                 }
+
+            minHeight = dpToPx(48)
+            setPadding(dpToPx(16), 0, dpToPx(16), 0)
+            contentDescription = "Open $appLabel"
+            isFocusable = true
 
             setOnClickListener {
                 openApp()
@@ -626,9 +682,14 @@ class BreathOverlayService : Service() {
 
             layoutParams =
                 LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dpToPx(52)
                 )
+
+            minHeight = dpToPx(48)
+            setPadding(dpToPx(16), 0, dpToPx(16), 0)
+            contentDescription = "Go back"
+            isFocusable = true
 
             setOnClickListener {
                 cancelJourney()
@@ -651,6 +712,10 @@ class BreathOverlayService : Service() {
 
         Log.d(TAG, "✅ User opened app")
 
+        // The open attempt was recorded before the overlay, but real usage
+        // starts only after the user passes the intervention.
+        SessionTracker.startSession(this, blockedPackage)
+
         prefs().edit()
             .putString("allowedPackage", blockedPackage)
             .putLong("allowedTime", System.currentTimeMillis())
@@ -665,6 +730,10 @@ class BreathOverlayService : Service() {
     private fun cancelJourney() {
 
         Log.d(TAG, "❌ User cancelled")
+
+        // There was no real app session while the overlay was visible. Clear
+        // the pending attempt without overwriting the previous session stats.
+        SessionTracker.cancelPendingSession(this)
 
         val currentScore =
             SessionTracker.getStoredScore(this, blockedPackage)
@@ -905,11 +974,11 @@ class BreathOverlayService : Service() {
 
     private fun levelBadgeTextColor(level: Int) =
         when (level) {
-            1 -> Color.parseColor("#4a7a5a")
-            2 -> Color.parseColor("#6a8a3a")
-            3 -> Color.parseColor("#8a7a2a")
-            4 -> Color.parseColor("#8a4a2a")
-            else -> Color.parseColor("#4a7a5a")
+            1 -> Color.parseColor("#a8d5b5")
+            2 -> Color.parseColor("#d2e59c")
+            3 -> Color.parseColor("#f0d58a")
+            4 -> Color.parseColor("#f0ae8a")
+            else -> Color.parseColor("#a8d5b5")
         }
 
     private fun levelBadgeBackground(level: Int) =
