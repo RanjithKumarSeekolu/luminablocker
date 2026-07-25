@@ -10,9 +10,40 @@ object FocusSessionStore {
 
     private const val PREFS = "LuminaFocus"
     private const val KEY_SESSIONS = "focus_sessions"
+    private const val KEY_ACTIVE_START = "active_start_ms"
+    private const val KEY_ACTIVE_TARGET = "active_target_ms"
+    private const val MAX_STORED_SESSIONS = 500
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** Starts a persisted session, or returns the existing session start. */
+    fun beginSession(ctx: Context, targetDurationMs: Long): Long {
+        val prefs = prefs(ctx)
+        val existingStart = prefs.getLong(KEY_ACTIVE_START, 0L)
+        if (existingStart > 0L) return existingStart
+
+        val start = System.currentTimeMillis()
+        prefs.edit()
+            .putLong(KEY_ACTIVE_START, start)
+            .putLong(KEY_ACTIVE_TARGET, targetDurationMs)
+            .apply()
+        return start
+    }
+
+    fun getActiveSession(ctx: Context): Pair<Long, Long>? {
+        val prefs = prefs(ctx)
+        val start = prefs.getLong(KEY_ACTIVE_START, 0L)
+        val target = prefs.getLong(KEY_ACTIVE_TARGET, 0L)
+        return if (start > 0L && target > 0L) Pair(start, target) else null
+    }
+
+    fun clearActiveSession(ctx: Context) {
+        prefs(ctx).edit()
+            .remove(KEY_ACTIVE_START)
+            .remove(KEY_ACTIVE_TARGET)
+            .apply()
+    }
 
     private fun todayKey(): String {
         val c = Calendar.getInstance()
@@ -20,7 +51,7 @@ object FocusSessionStore {
     }
 
     // Called when focus session ends (completed or early exit)
-    fun saveSession(ctx: Context, durationMs: Long, completed: Boolean) {
+    fun saveSession(ctx: Context, durationMs: Long, targetDurationMs: Long, completed: Boolean) {
         val prefs = prefs(ctx)
         val existing = prefs.getString(KEY_SESSIONS, "[]") ?: "[]"
         val array = JSONArray(existing)
@@ -28,10 +59,14 @@ object FocusSessionStore {
         val obj = JSONObject().apply {
             put("date", todayKey())
             put("durationMs", durationMs)
+            put("targetDurationMs", targetDurationMs)
             put("completed", completed)
             put("timestamp", System.currentTimeMillis())
         }
 
+        while (array.length() >= MAX_STORED_SESSIONS) {
+            array.remove(0)
+        }
         array.put(obj)
         prefs.edit().putString(KEY_SESSIONS, array.toString()).apply()
     }

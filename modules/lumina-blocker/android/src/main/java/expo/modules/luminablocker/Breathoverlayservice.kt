@@ -654,6 +654,7 @@ class BreathOverlayService : Service() {
         prefs().edit()
             .putString("allowedPackage", blockedPackage)
             .putLong("allowedTime", System.currentTimeMillis())
+            .putBoolean("session_active_$blockedPackage", true)
             .putBoolean("breathScreenActive", false)
             .remove("cancelledPackage")
             .apply()
@@ -697,6 +698,7 @@ class BreathOverlayService : Service() {
 
         prefs().edit()
             .putBoolean("breathScreenActive", false)
+            .putBoolean("session_active_$blockedPackage", false)
             .remove("allowedPackage")
             .remove("cancelledPackage")
             .apply()

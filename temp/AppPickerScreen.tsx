@@ -442,15 +442,14 @@ export default function AppPickerScreen() {
   // Merge daily snapshots
   // ───────────────────────────────────────────────────────────
 
-  console.log("raw snapshots", snapshots);
   const liveDailySnapshot: DailySnapshot = {
     date: new Date().toLocaleDateString("en-CA"),
     totalUsageMs: appScores.reduce((sum, a) => sum + (a.usageMs ?? 0), 0),
-    morningUsageMs: appScores.reduce(
+    earlyUsageMs: appScores.reduce(
       (sum, a) => sum + (a.usageBreakdown?.morning ?? 0),
       0,
     ),
-    afternoonUsageMs: appScores.reduce(
+    workUsageMs: appScores.reduce(
       (sum, a) => sum + (a.usageBreakdown?.afternoon ?? 0),
       0,
     ),
@@ -553,7 +552,7 @@ export default function AppPickerScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Daily Balance</Text>
 
-        <DailyStatsCard snapshot={liveDailySnapshot} />
+        {snapshots.length > 0 && <DailyStatsCard snapshot={snapshots[0]} />}
       </View>
 
       {/* Weekly Trends */}

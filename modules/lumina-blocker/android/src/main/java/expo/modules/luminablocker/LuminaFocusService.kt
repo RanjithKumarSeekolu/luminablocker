@@ -55,6 +55,7 @@ class LuminaFocusService : Service() {
         const val CHANNEL_ID      = "lumina_focus"
         const val NOTIF_ID        = 42
         const val EXTRA_DURATION  = "durationMs"
+        const val EXTRA_HEADLESS  = "headless"
         const val ACTION_VOLUME_DOWN = "lumina.VOLUME_DOWN_PRESSED"
         const val EXTRA_PRESSED   = "pressed"
 
@@ -77,9 +78,14 @@ class LuminaFocusService : Service() {
         )
 
 
-        fun start(ctx: Context, durationMs: Long = LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS) {
+        fun start(
+            ctx: Context,
+            durationMs: Long = LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS,
+            headless: Boolean = false
+        ) {
             val intent = Intent(ctx, LuminaFocusService::class.java).apply {
                 putExtra(EXTRA_DURATION, durationMs)
+                putExtra(EXTRA_HEADLESS, headless)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ctx.startForegroundService(intent)
@@ -119,9 +125,14 @@ class LuminaFocusService : Service() {
     }
 
     private fun startEnforcementLoop() {
+        stopEnforcementLoop()
         enforcementRunnable = object : Runnable {
             override fun run() {
                 if (!isActive) return
+                if (FocusLockActivity.isVisible || !FocusLockActivity.allowRelaunch()) {
+                    enforcementHandler.postDelayed(this, 800)
+                    return
+                }
                 val intent = Intent(
                     applicationContext,
                     FocusLockActivity::class.java
@@ -129,8 +140,7 @@ class LuminaFocusService : Service() {
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_NO_HISTORY
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                     )
                 }
                 try {
@@ -139,7 +149,9 @@ class LuminaFocusService : Service() {
                 enforcementHandler.postDelayed(this, 800) // every 800ms
             }
         }
-        enforcementHandler.post(enforcementRunnable!!)
+        // Give startFocusLock's direct activity launch time to settle before
+        // the watchdog performs its first recovery check.
+        enforcementHandler.postDelayed(enforcementRunnable!!, 800)
     }
 
     private fun stopEnforcementLoop() {
@@ -149,7 +161,13 @@ class LuminaFocusService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         totalMs    = intent?.getLongExtra(EXTRA_DURATION, LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS) ?: (LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS)
         remainingMs = totalMs
-        showOverlay()
+        if (intent?.getBooleanExtra(EXTRA_HEADLESS, false) == true) {
+            // FocusLockActivity owns the visible UI for the lock flow. The
+            // service remains foreground/headless so it can enforce the lock.
+            removeOverlay()
+        } else {
+            showOverlay()
+        }
         startEnforcementLoop()
         return START_STICKY
     }
@@ -553,6 +571,7 @@ class LuminaFocusService : Service() {
         volFill: View
     ) {
         isRunning = true
+        FocusSessionStore.beginSession(applicationContext, totalMs)
         startBtn.text = "⏸  Pause"
         durRow.alpha = 0.3f
 
@@ -599,8 +618,10 @@ class LuminaFocusService : Service() {
         FocusSessionStore.saveSession(
             applicationContext,
             totalMs,  // completed = always full duration
+            totalMs,  // target = also full duration
             true
         )
+        FocusSessionStore.clearActiveSession(applicationContext)
 
         todayTotalMinutes += (totalMs / 60000).toInt()
         sessionNumber++
@@ -706,8 +727,10 @@ class LuminaFocusService : Service() {
         FocusSessionStore.saveSession(
             applicationContext,
             totalMs - remainingMs,  // actual time spent
+            totalMs,
             false
         )
+        FocusSessionStore.clearActiveSession(applicationContext)
         stopSelf()
     }
 

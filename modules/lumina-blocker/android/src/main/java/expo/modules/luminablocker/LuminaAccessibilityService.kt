@@ -41,8 +41,7 @@ class LuminaAccessibilityService : AccessibilityService() {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                Intent.FLAG_ACTIVITY_NO_HISTORY
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             )
         }
         ctx.startActivity(intent)
@@ -51,42 +50,7 @@ class LuminaAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val ctx = applicationContext
 
-        // ── Focus mode guard ──────────────────────────────────────
-        // If focus mode is active, intercept any escape attempt
-        // if (LuminaFocusService.isActive) {
-        //     val pkg = event?.packageName?.toString() ?: return
-
-        //     Log.d(
-        //         TAG,
-        //         "Focus active: pkg=$pkg"
-        //     )
-
-        //     val isEscapeAttempt =
-        //         pkg.contains("launcher") ||
-        //         pkg == "com.android.launcher" ||
-        //         pkg == "com.google.android.apps.nexuslauncher" ||
-        //         pkg == "com.android.systemui" ||          // recents + lock screen
-        //         pkg.contains("keyguard") ||               // any vendor's lock screen
-        //         pkg.contains("lockscreen")                // Samsung DeX / MIUI etc.
-
-        //     if (isEscapeAttempt) {
-        //         val intent = Intent(ctx, FocusLockActivity::class.java).apply {
-        //             addFlags(
-        //                 Intent.FLAG_ACTIVITY_NEW_TASK or
-        //                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
-        //                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-        //                 Intent.FLAG_ACTIVITY_NO_HISTORY
-        //             )
-        //         }
-        //         ctx.startActivity(intent)
-        //         return
-        //     }
-
-        //     // Block all other apps too during focus mode
-        //     if (pkg != ctx.packageName) return
-        // }
-
-            if (LuminaFocusService.isActive) {
+        if (LuminaFocusService.isActive) {
         val pkg = event?.packageName?.toString() ?: return
 
         // Allow only our own package
@@ -95,7 +59,20 @@ class LuminaAccessibilityService : AccessibilityService() {
             // Block and relaunch for every other package including
             // systemui, keyguard, launcher, lock screen — everything
             android.util.Log.d(TAG, "Focus active, blocking pkg=$pkg — relaunching")
-            relaunchFocusActivity(ctx)
+            if (pkg == "com.android.systemui") {
+                // Dismiss notification shade / quick settings when Android
+                // reports System UI becoming the foreground window.
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+            handler.postDelayed({
+                if (
+                    LuminaFocusService.isActive &&
+                    !FocusLockActivity.isVisible &&
+                    FocusLockActivity.allowRelaunch()
+                ) {
+                    relaunchFocusActivity(ctx)
+                }
+            }, 100L)
             return
         }
 
@@ -105,25 +82,26 @@ class LuminaAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
         val className = event.className?.toString() ?: ""
 
-        if (!className.contains("Activity")) return
-        if (packageName == applicationContext.packageName) return
-
         val prefs = ctx.getSharedPreferences("LuminaPrefs", Context.MODE_PRIVATE)
         val now   = System.currentTimeMillis()
-
         val blockedApps = prefs.getStringSet("blockedApps", emptySet())?.toSet() ?: emptySet()
 
-        if (lastForegroundPackage.isNotEmpty() &&
-            lastForegroundPackage != packageName &&
+        if (!className.contains("Activity") &&
+            lastForegroundPackage.isNotEmpty() &&
             lastForegroundPackage in blockedApps
         ) {
-            Log.d(TAG, "📴 Left foreground: $lastForegroundPackage → $packageName")
+            Log.d(TAG, "📴 Non-activity leave: clearing session for $lastForegroundPackage")
             SessionTracker.onAppLeft(ctx)
             prefs.edit()
                 .remove("allowedPackage")
                 .remove("allowedTime")
+                .putBoolean("session_active_$lastForegroundPackage", false)
                 .apply()
+            lastForegroundPackage = ""
         }
+
+        if (!className.contains("Activity")) return
+        if (packageName == applicationContext.packageName) return
 
         val prevForeground     = lastForegroundPackage
         val prevForegroundTime = lastForegroundTime
@@ -140,32 +118,44 @@ class LuminaAccessibilityService : AccessibilityService() {
             return
         }
 
-        val allowedPackage = prefs.getString("allowedPackage", "") ?: ""
-        val allowedTime    = prefs.getLong("allowedTime", 0L)
-        val allowedAge     = now - allowedTime
-
-        if (allowedPackage == packageName && allowedAge < LuminaConfig.Windows.ALLOW_WINDOW_MS) {
-            Log.d(TAG, "🟢 Session active — refreshed allow window (was ${allowedAge}ms old)")
+        val isSessionActive = prefs.getBoolean("session_active_$packageName", false)
+        if (isSessionActive) {
+            Log.d(TAG, "🟢 Session active for $packageName — skip overlay")
             return
-        }
-
-        if (allowedPackage.isNotEmpty() && allowedAge >= LuminaConfig.Windows.ALLOW_WINDOW_MS) {
-            Log.d(TAG, "⌛ Allow window expired (${allowedAge}ms) — clearing")
-            prefs.edit().remove("allowedPackage").remove("allowedTime").apply()
         }
 
         SessionTracker.onAppOpened(ctx, packageName)
 
-        val level = ScoreEngine.evaluate(ctx, packageName)
+        val scoredLevel = ScoreEngine.evaluate(ctx, packageName)
         val score = SessionTracker.getStoredScore(ctx, packageName)
 
-        Log.d(TAG, "📊 Score: $score → Level: $level")
+        // Per-app settings are intentionally applied after scoring so score
+        // history remains consistent even when the user changes intervention
+        // intensity or disables reminders.
+        val intensity = prefs.getInt("app_intensity_$packageName", -1)
+        val mindfulReminder =
+            prefs.getBoolean("mindfulReminders", true) &&
+            prefs.getBoolean("app_mindful_$packageName", true)
+        val nightLock = prefs.getBoolean("app_night_lock_$packageName", false)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val nightLockActive = nightLock && (hour >= 23 || hour < 6)
+        val requestedLevel = if (mindfulReminder || nightLockActive) {
+            if (nightLockActive) maxOf(scoredLevel, 1) else scoredLevel
+        } else {
+            0
+        }
+        val level = when (intensity) {
+            0 -> minOf(requestedLevel, 1) // Subtle: gentle reminder only
+            1 -> minOf(requestedLevel, 2) // Moderate: cap countdown level
+            else -> requestedLevel       // Deep or unset: use scored level
+        }
 
         if (level == 0) {
             Log.d(TAG, "✅ Score too low for overlay — passing through")
             prefs.edit()
                 .putString("allowedPackage", packageName)
                 .putLong("allowedTime", now)
+                .putBoolean("session_active_$packageName", true)
                 .apply()
             return
         }
@@ -173,12 +163,15 @@ class LuminaAccessibilityService : AccessibilityService() {
         val countdownMs = ScoreEngine.levelToCountdownMs(level)
         val appLabel    = getAppLabel(packageName)
 
-        Log.d(TAG, "🫁 Showing overlay for $packageName — level $level, countdown ${countdownMs}ms")
-
         prefs.edit().putBoolean("breathScreenActive", true).apply()
 
         val openCount = SessionTracker.getOpenCountThisHour(ctx, packageName)
         val usageMs = SessionTracker.getTotalUsageMs(ctx, packageName)
+
+        val overlayEnabled = prefs.getBoolean("overlayEnabled", true)
+
+
+        if (!overlayEnabled) return  // skip, let app open normally
 
         BreathOverlayService.start(ctx, packageName, level, countdownMs, openCount, usageMs)
 

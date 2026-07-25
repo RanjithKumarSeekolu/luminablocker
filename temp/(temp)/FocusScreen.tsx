@@ -212,8 +212,6 @@ export default function FocusScreen() {
     startFocusLock(totalMinutes * 60 * 1000);
   };
 
-  console.log("Volume exit allowed:", isVolumeExitAllowed());
-
   // ─────────────────────────────────────────
   // Input
   // ─────────────────────────────────────────

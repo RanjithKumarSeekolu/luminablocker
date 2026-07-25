@@ -10,9 +10,9 @@ data class AppDailySnapshot(
 
     val usageMs: Long,
 
-    val morningUsageMs: Long,
+    val earlyUsageMs: Long,
 
-    val afternoonUsageMs: Long,
+    val workUsageMs: Long,
 
     val eveningUsageMs: Long,
 

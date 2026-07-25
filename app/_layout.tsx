@@ -1,23 +1,28 @@
+import FoundationOfFocusScreen from "@/components/FoundationOfFocusScreen";
+import LuminaSplashScreen from "@/components/Luminasplashscreen";
+import {
+  canDrawOverlays,
+  hasUsagePermission,
+  isAccessibilityEnabled,
+} from "@/modules/lumina-blocker";
+import { initLuminaStore } from "@/store/luminaStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Animated, AppState } from "react-native";
 import "react-native-reanimated";
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary
-} from "expo-router";
+export { ErrorBoundary } from "expo-router";
 
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: "(tabs)",
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+type Stage = "splash" | "permissions" | "app";
+
+function allPermissionsGranted() {
+  return isAccessibilityEnabled() && canDrawOverlays() && hasUsagePermission();
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -25,7 +30,6 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
@@ -36,20 +40,104 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
+  useEffect(() => {
+    void initLuminaStore();
+  }, []);
+
+  if (!loaded) return null;
 
   return <RootLayoutNav />;
 }
 
 function RootLayoutNav() {
+  const [stage, setStage] = useState<Stage>("splash");
+
+  const hasPermissions = useRef(allPermissionsGranted()).current;
+
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  const transitionTo = (next: Stage) => {
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration: 350,
+      useNativeDriver: true,
+    }).start(() => {
+      setStage(next);
+
+      opacity.setValue(0);
+
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  useEffect(() => {
+    if (stage !== "splash") return;
+
+    const timer = setTimeout(() => {
+      transitionTo(hasPermissions ? "app" : "permissions");
+    }, 2200);
+
+    return () => clearTimeout(timer);
+  }, [stage]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && stage === "app") {
+        if (!allPermissionsGranted()) {
+          transitionTo("permissions");
+        }
+      }
+    });
+
+    return () => sub.remove();
+  }, [stage]);
+
+  let content = null;
+
+  switch (stage) {
+    case "splash":
+      content = <LuminaSplashScreen showOnboardingDots={!hasPermissions} />;
+      break;
+
+    case "permissions":
+      content = (
+        <FoundationOfFocusScreen onAllGranted={() => transitionTo("app")} />
+      );
+      break;
+
+    case "app":
+      content = (
+        <Stack>
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              headerShown: false,
+            }}
+          />
+
+          <Stack.Screen
+            name="modal"
+            options={{
+              presentation: "modal",
+            }}
+          />
+        </Stack>
+      );
+      break;
+  }
+
   return (
-    <ThemeProvider value={DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-      </Stack>
-    </ThemeProvider>
+    <Animated.View
+      style={{
+        flex: 1,
+        opacity,
+      }}
+    >
+      {content}
+    </Animated.View>
   );
 }

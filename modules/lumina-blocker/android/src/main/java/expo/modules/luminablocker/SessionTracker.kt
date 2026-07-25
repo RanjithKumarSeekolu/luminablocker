@@ -5,6 +5,7 @@ import java.util.Calendar
 
 import org.json.JSONArray
 import org.json.JSONObject
+import android.content.pm.ApplicationInfo
 
 /**
  * Tracks per-app usage: session timing, open frequency, reopen gaps, and score.
@@ -34,9 +35,28 @@ object SessionTracker {
     private const val KEY_DAILY_SNAPSHOTS = "daily_snapshots"
     private const val KEY_LAST_SNAPSHOT_DATE = "last_snapshot_date"
     private const val KEY_APP_DAILY_SNAPSHOTS = "app_daily_snapshots"
+    private const val KEY_USAGE_DATE = "usage_date"
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /**
+     * Apps selected by the user must be included even before their first
+     * blocked open. A newly selected app has no score_* preference yet, but
+     * UsageStats can still provide its usage from earlier today.
+     */
+    private fun trackedPackageNames(ctx: Context): Set<String> {
+        val sessionPrefs = prefs(ctx)
+        val scoredApps = sessionPrefs.all.keys
+            .filter { it.startsWith("score_") }
+            .map { it.removePrefix("score_") }
+        val blockedApps = ctx.getSharedPreferences("LuminaPrefs", Context.MODE_PRIVATE)
+            .getStringSet("blockedApps", emptySet())
+            ?.toList()
+            ?: emptyList()
+
+        return (scoredApps + blockedApps).toSet()
+    }
 
     private fun scoreKey(packageName: String) =
     "score_$packageName"
@@ -55,6 +75,8 @@ object SessionTracker {
 
     private fun frequencyKey(packageName: String) =
     "frequency_$packageName"
+    
+    private fun resetDayKey(packageName: String) = "reset_day_$packageName"
 
 
     // --store daily snapshot of all scores for historical graphing in the future (not yet implemented)--
@@ -76,14 +98,14 @@ object SessionTracker {
                 packageName,
                 LuminaConfig
                     .UsageBuckets
-                    .MORNING
+                    .EARLY
             ),
 
             bucketUsageKey(
                 packageName,
                 LuminaConfig
                     .UsageBuckets
-                    .AFTERNOON
+                    .WORK
             ),
 
             bucketUsageKey(
@@ -108,6 +130,12 @@ object SessionTracker {
 
             hourlyOpenKey(packageName),
             hourlyWindowKey(packageName),
+            resetDayKey(packageName),
+
+            "app_intensity_$packageName",
+            "app_mindful_$packageName",
+            "app_night_lock_$packageName",
+
         )
 
         val editor =
@@ -118,7 +146,6 @@ object SessionTracker {
         }
 
         editor.apply()
-
         clearAppSnapshots(
             ctx,
             packageName
@@ -246,13 +273,13 @@ object SessionTracker {
                 )
 
                 put(
-                    "morningUsageMs",
-                    snapshot.morningUsageMs
+                    "earlyUsageMs",
+                    snapshot.earlyUsageMs
                 )
 
                 put(
-                    "afternoonUsageMs",
-                    snapshot.afternoonUsageMs
+                    "workUsageMs",
+                    snapshot.workUsageMs
                 )
 
                 put(
@@ -296,14 +323,193 @@ object SessionTracker {
             .apply()
     }
 
-    fun getDailySnapshots(
-        ctx: Context
+    private fun getAppCategory(
+        ctx: Context,
+        packageName: String
     ): String {
 
-        return prefs(ctx).getString(
-            KEY_DAILY_SNAPSHOTS,
-            "[]"
-        ) ?: "[]"
+        return try {
+            val appInfo =
+                ctx.packageManager.getApplicationInfo(
+                    packageName,
+                    0
+                )
+
+            when (appInfo.category) {
+                ApplicationInfo.CATEGORY_GAME ->
+                    "GAMES"
+
+                ApplicationInfo.CATEGORY_SOCIAL ->
+                    "SOCIAL"
+
+                ApplicationInfo.CATEGORY_AUDIO ->
+                    "MUSIC"
+
+                ApplicationInfo.CATEGORY_VIDEO ->
+                    "VIDEO"
+
+                ApplicationInfo.CATEGORY_NEWS ->
+                    "NEWS"
+
+                ApplicationInfo.CATEGORY_PRODUCTIVITY ->
+                    "PRODUCTIVITY"
+
+                ApplicationInfo.CATEGORY_IMAGE ->
+                    "PHOTOGRAPHY"
+
+                ApplicationInfo.CATEGORY_MAPS ->
+                    "NAVIGATION"
+
+                else ->
+                    "APP"
+            }
+        } catch (e: Exception) {
+            "APP"
+        }
+    }
+
+    fun getDailySnapshots(
+        ctx: Context,
+        days: Int = 7
+    ): List<Map<String, Any>> {
+
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+
+        val trackedApps = trackedPackageNames(ctx)
+
+        val result = mutableListOf<Map<String, Any>>()
+
+        for (dayOffset in 0 until days) {
+            val cal = java.util.Calendar.getInstance().apply {
+                add(java.util.Calendar.DAY_OF_YEAR, -dayOffset)
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val dayDate = sdf.format(cal.time)
+            val isToday = dayOffset == 0
+
+            val apps = trackedApps.map { packageName ->
+                val score = getStoredScore(ctx, packageName)
+                val appName = try {
+                    val info = ctx.packageManager.getApplicationInfo(packageName, 0)
+                    ctx.packageManager.getApplicationLabel(info).toString()
+                } catch (e: Exception) { packageName }
+
+                // ── Use SessionTracker prefs for today, UsageStats for past days ──
+                val usageBreakdown: Map<String, Any> = if (isToday) {
+                    val raw = UsageStatsHelper.getTodayUsageBreakdown(ctx, packageName)
+                    mapOf(
+                        "total"   to ((raw["total"]   as? Number)?.toLong() ?: 0L),
+                        "early"   to ((raw["early"]   as? Number)?.toLong() ?: 0L),  // ← was "morning"
+                        "work"    to ((raw["work"]    as? Number)?.toLong() ?: 0L),  // ← was "afternoon"
+                        "evening" to ((raw["evening"] as? Number)?.toLong() ?: 0L),
+                        "night"   to ((raw["night"]   as? Number)?.toLong() ?: 0L),
+                    )
+                } else {
+                    val raw = UsageStatsHelper.getDailyUsageForApp(ctx, packageName, dayOffset)
+                    mapOf(
+                        "total"   to ((raw["total"]   as? Number)?.toLong() ?: 0L),
+                        "early"   to ((raw["early"]   as? Number)?.toLong() ?: 0L),
+                        "work"    to ((raw["work"]    as? Number)?.toLong() ?: 0L),
+                        "evening" to ((raw["evening"] as? Number)?.toLong() ?: 0L),
+                        "night"   to ((raw["night"]   as? Number)?.toLong() ?: 0L),
+                    )
+                }
+
+                mapOf(
+                    "packageName"    to packageName,
+                    "appName"        to appName,
+                    "score"          to score,
+                    "level"          to ScoreEngine.scoreToLevel(score),
+                    "usageMs"        to ((usageBreakdown["total"] as? Number)?.toLong() ?: 0L),
+                    "usageBreakdown" to usageBreakdown,
+                    "events"         to getEventsForAppOnDate(ctx, packageName, dayDate)
+                )
+            }
+
+            // ── Day-level totals from app entries (no extra UsageStats call) ──
+            val totalMs   = apps.sumOf { (it["usageMs"] as? Long) ?: 0L }
+            val earlyMs   = apps.sumOf { ((it["usageBreakdown"] as? Map<*, *>)?.get("early")   as? Long) ?: 0L }
+            val workMs    = apps.sumOf { ((it["usageBreakdown"] as? Map<*, *>)?.get("work")    as? Long) ?: 0L }
+            val eveningMs = apps.sumOf { ((it["usageBreakdown"] as? Map<*, *>)?.get("evening") as? Long) ?: 0L }
+            val nightMs   = apps.sumOf { ((it["usageBreakdown"] as? Map<*, *>)?.get("night")   as? Long) ?: 0L }
+
+            result.add(mapOf(
+                "date"          to dayDate,
+                "totalUsageMs"  to totalMs,
+                "earlyUsageMs"  to earlyMs,    // ← was morningUsageMs
+                "workUsageMs"   to workMs,     // ← was afternoonUsageMs
+                "eveningUsageMs" to eveningMs,
+                "nightUsageMs"  to nightMs,
+                "apps"          to apps
+            ))
+        }
+
+        return result
+    }
+
+    fun getWeeklyUsageForApp(
+        ctx: Context,
+        packageName: String
+    ): List<Map<String, Any>> {
+
+        val snapshots = getDailySnapshots(ctx, 7)
+
+        return snapshots.reversed().map { day ->
+
+            val apps =
+                day["apps"] as? List<Map<String, Any>>
+                    ?: emptyList()
+
+            val app =
+                apps.firstOrNull {
+                    it["packageName"] == packageName
+                }
+
+            mapOf(
+                "day" to java.text.SimpleDateFormat(
+                    "EEE",
+                    java.util.Locale.getDefault()
+                ).format(
+                    java.text.SimpleDateFormat(
+                        "yyyy-MM-dd",
+                        java.util.Locale.getDefault()
+                    ).parse(day["date"] as String)!!
+                ),
+
+                "usageMs" to (
+                    app?.get("usageMs")
+                        as? Long ?: 0L
+                )
+            )
+        }
+    }
+
+    private fun getEventsForAppOnDate(
+        ctx: Context,
+        packageName: String,
+        date: String
+    ): List<Map<String, Any>> {
+
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+
+        return HistoryTracker.getHistory(ctx)
+            .filter { event ->
+                event.packageName == packageName &&
+                sdf.format(java.util.Date(event.timestamp)) == date
+            }
+            .map { event ->
+                mapOf(
+                    "timestamp"     to event.timestamp,
+                    "reason"        to event.reason,
+                    "details"       to event.details,
+                    "delta"         to event.delta,
+                    "previousScore" to event.previousScore,
+                    "newScore"      to event.newScore
+                )
+            }
     }
 
     private fun saveAppDailySnapshot(
@@ -322,60 +528,18 @@ object SessionTracker {
         val array =
             JSONArray(existing)
 
-        val obj =
-            JSONObject().apply {
-
-                put(
-                    "date",
-                    snapshot.date
-                )
-
-                put(
-                    "packageName",
-                    snapshot.packageName
-                )
-
-                put(
-                    "appName",
-                    snapshot.appName
-                )
-
-                put(
-                    "usageMs",
-                    snapshot.usageMs
-                )
-
-                put(
-                    "morningUsageMs",
-                    snapshot.morningUsageMs
-                )
-
-                put(
-                    "afternoonUsageMs",
-                    snapshot.afternoonUsageMs
-                )
-
-                put(
-                    "eveningUsageMs",
-                    snapshot.eveningUsageMs
-                )
-
-                put(
-                    "nightUsageMs",
-                    snapshot.nightUsageMs
-                )
-
-                put(
-                    "score",
-                    snapshot.score
-                )
-
-                put(
-                    "level",
-                    snapshot.level
-                )
-            }
-
+        val obj = JSONObject().apply {
+            put("date", snapshot.date)
+            put("packageName", snapshot.packageName)
+            put("appName", snapshot.appName)
+            put("usageMs", snapshot.usageMs)
+            put("earlyUsageMs", snapshot.earlyUsageMs)      // ← was morningUsageMs
+            put("workUsageMs", snapshot.workUsageMs)         // ← was afternoonUsageMs
+            put("eveningUsageMs", snapshot.eveningUsageMs)
+            put("nightUsageMs", snapshot.nightUsageMs)
+            put("score", snapshot.score)
+            put("level", snapshot.level)
+        }
         var replaced = false
 
         for (i in 0 until array.length()) {
@@ -428,6 +592,21 @@ object SessionTracker {
         ) ?: "[]"
     }
 
+    // ── Reset daily usage counters ──────────────────────────────
+    private fun resetDailyUsage(ctx: Context) {
+        val prefs = prefs(ctx)
+        val editor = prefs.edit()
+        
+        // Remove all usage_ keys (total + bucket) for all tracked apps
+        prefs.all.keys
+            .filter { key ->
+                key.startsWith("usage_") // covers usage_pkg, usage_pkg_morning etc
+            }
+            .forEach { key -> editor.remove(key) }
+        
+        editor.apply()
+    }
+
     fun generateDailySnapshotIfNeeded(ctx: Context) {
 
         val prefs = prefs(ctx)
@@ -451,16 +630,7 @@ object SessionTracker {
 
         // ── Total usage ONLY for tracked / blocked apps ─────────────────────
 
-        val blockedApps =
-            prefs(ctx)
-                .all
-                .keys
-                .filter {
-                    it.startsWith("score_")
-                }
-                .map {
-                    it.removePrefix("score_")
-                }
+        val blockedApps = trackedPackageNames(ctx).toList()
 
                 val totalUsageMs =
                     blockedApps.sumOf { packageName ->
@@ -473,20 +643,20 @@ object SessionTracker {
 
                 // ── Usage buckets ───────────────────────────────────
 
-                val morningUsageMs =
+                val earlyUsageMs =
                     getTotalUsageForBucket(
                         ctx,
                         LuminaConfig
                             .UsageBuckets
-                            .MORNING
+                            .EARLY
                     )
 
-                val afternoonUsageMs =
+                val workUsageMs =
                     getTotalUsageForBucket(
                         ctx,
                         LuminaConfig
                             .UsageBuckets
-                            .AFTERNOON
+                            .WORK
                     )
 
                 val eveningUsageMs =
@@ -540,11 +710,11 @@ object SessionTracker {
                         totalUsageMs =
                             totalUsageMs,
 
-                        morningUsageMs =
-                            morningUsageMs,
+                        earlyUsageMs =
+                            earlyUsageMs,
 
-                        afternoonUsageMs =
-                            afternoonUsageMs,
+                        workUsageMs =
+                            workUsageMs,
 
                         eveningUsageMs =
                             eveningUsageMs,
@@ -572,16 +742,7 @@ object SessionTracker {
                     snapshot
                 )
 
-        val trackedApps =
-            prefs(ctx)
-                .all
-                .keys
-                .filter {
-                    it.startsWith("score_")
-                }
-                .map {
-                    it.removePrefix("score_")
-                }
+        val trackedApps = trackedPackageNames(ctx)
 
         trackedApps.forEach { packageName ->
 
@@ -641,18 +802,18 @@ object SessionTracker {
                     usageMs =
                         usageMs,
 
-                    morningUsageMs =
+                    earlyUsageMs =
                         breakdown[
                             LuminaConfig
                                 .UsageBuckets
-                                .MORNING
+                                .EARLY
                         ] ?: 0L,
 
-                    afternoonUsageMs =
+                    workUsageMs =
                         breakdown[
                             LuminaConfig
                                 .UsageBuckets
-                                .AFTERNOON
+                                .WORK
                         ] ?: 0L,
 
                     eveningUsageMs =
@@ -680,6 +841,8 @@ object SessionTracker {
             )
         }
 
+        resetDailyUsage(ctx) 
+        
         prefs.edit()
             .putString(
                 KEY_LAST_SNAPSHOT_DATE,
@@ -807,19 +970,9 @@ object SessionTracker {
             // ── Persist usage ───────────────────────
 
             prefs.edit()
-
-                // total usage
-                .putLong(
-                    usageKey(packageName),
-                    updatedTotal
-                )
-
-                // morning / afternoon / evening / night
-                .putLong(
-                    bucketKey,
-                    updatedBucketUsage
-                )
-
+                .putString(KEY_USAGE_DATE, todayKey())  // ← stamp today's date
+                .putLong(usageKey(packageName), updatedTotal)
+                .putLong(bucketKey, updatedBucketUsage)
                 .apply()
         }
 
@@ -847,171 +1000,83 @@ object SessionTracker {
             .apply()
     }
 
-    fun getTotalUsageMs(
-        ctx: Context,
-        packageName: String
-    ): Long {
-
-        return prefs(ctx).getLong(
-            usageKey(packageName),
-            0L
-        )
+    fun getTotalUsageMs(ctx: Context, packageName: String): Long {
+        val prefs = prefs(ctx)
+        if (prefs.getString(KEY_USAGE_DATE, null) != todayKey()) return 0L
+        return prefs.getLong(usageKey(packageName), 0L)
     }
 
     private fun currentTimeBucket(): String {
-
-        val hour =
-            Calendar.getInstance()
-                .get(Calendar.HOUR_OF_DAY)
-
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         return when {
-
-            hour >= LuminaConfig
-                .UsageBuckets
-                .MORNING_START &&
-
-            hour <
-                LuminaConfig
-                    .UsageBuckets
-                    .MORNING_END ->
-
-                LuminaConfig
-                    .UsageBuckets
-                    .MORNING
-
-
-            hour >= LuminaConfig
-                .UsageBuckets
-                .AFTERNOON_START &&
-
-            hour <
-                LuminaConfig
-                    .UsageBuckets
-                    .AFTERNOON_END ->
-
-                LuminaConfig
-                    .UsageBuckets
-                    .AFTERNOON
-
-
-            hour >= LuminaConfig
-                .UsageBuckets
-                .EVENING_START &&
-
-            hour <
-                LuminaConfig
-                    .UsageBuckets
-                    .EVENING_END ->
-
-                LuminaConfig
-                    .UsageBuckets
-                    .EVENING
-
-
-            else ->
-                LuminaConfig
-                    .UsageBuckets
-                    .NIGHT
+            hour >= LuminaConfig.UsageBuckets.EVENING_END   -> LuminaConfig.UsageBuckets.NIGHT
+            hour >= LuminaConfig.UsageBuckets.EVENING_START -> LuminaConfig.UsageBuckets.EVENING
+            hour >= LuminaConfig.UsageBuckets.WORK_START    -> LuminaConfig.UsageBuckets.WORK
+            else                                             -> LuminaConfig.UsageBuckets.EARLY
         }
     }
     
-    fun getUsageBreakdown( ctx: Context, packageName: String ): Map<String, Long> {
-
+    fun getUsageBreakdown(ctx: Context, packageName: String): Map<String, Long> {
         val prefs = prefs(ctx)
-
+        if (prefs.getString(KEY_USAGE_DATE, null) != todayKey()) return mapOf(
+            "early" to 0L, "work" to 0L, "evening" to 0L, "night" to 0L
+        )
         return mapOf(
-            "morning" to prefs.getLong(
-                bucketUsageKey(
-                    packageName,
-                    "morning"
-                ),
-                0L
-            ),
-
-            "afternoon" to prefs.getLong(
-                bucketUsageKey(
-                    packageName,
-                    "afternoon"
-                ),
-                0L
-            ),
-
-            "evening" to prefs.getLong(
-                bucketUsageKey(
-                    packageName,
-                    "evening"
-                ),
-                0L
-            ),
-
-            "night" to prefs.getLong(
-                bucketUsageKey(
-                    packageName,
-                    "night"
-                ),
-                0L
-            )
+            "early"   to prefs.getLong(bucketUsageKey(packageName, "early"),   0L),
+            "work"    to prefs.getLong(bucketUsageKey(packageName, "work"),    0L),
+            "evening" to prefs.getLong(bucketUsageKey(packageName, "evening"), 0L),
+            "night"   to prefs.getLong(bucketUsageKey(packageName, "night"),   0L),
         )
     }
 
     fun getAllAppScores(ctx: Context): List<Map<String, Any>> {
-
         val prefs = prefs(ctx)
-
         val all = prefs.all
 
-        val result =
-            mutableListOf<Map<String, Any>>()
+        // Include selected apps before they have a score_* preference so their
+        // existing UsageStats data appears immediately after selection.
+        val packageNames = trackedPackageNames(ctx).toList()
 
-        for ((key, value) in all) {
+        packageNames.forEach { pkg ->
+            applyDailyResetIfNeeded(ctx, pkg)
+        }
 
-            if (!key.startsWith("score_")) {
-                continue
-            }
+        // Single queryEvents call for all apps instead of N calls
+        val usageMap = UsageStatsHelper.getTodayUsageBreakdownForApps(ctx, packageNames)
 
-            val packageName =
-                key.removePrefix("score_")
+        val result = mutableListOf<Map<String, Any>>()
 
-            val score =
-                value as? Int ?: 0
-
-            if (score <= 0) {
-                continue
-            }
+        for (packageName in packageNames) {
+            val score = all[scoreKey(packageName)] as? Int ?: 0
 
             val appName = try {
-
-                val info =
-                    ctx.packageManager
-                        .getApplicationInfo(
-                            packageName,
-                            0
-                        )
-
-                ctx.packageManager
-                    .getApplicationLabel(info)
-                    .toString()
-
+                val info = ctx.packageManager.getApplicationInfo(packageName, 0)
+                ctx.packageManager.getApplicationLabel(info).toString()
             } catch (e: Exception) {
                 packageName
             }
 
+            val usageRaw = usageMap[packageName] ?: emptyMap()
+
             result.add(
                 mapOf(
                     "packageName" to packageName,
-                    "appName" to appName,
-                    "score" to score,
-                    "level" to ScoreEngine
-                        .scoreToLevel(score),
-                    "usageMs" to (UsageStatsHelper.getTodayUsageBreakdown(ctx, packageName)["total"] ?: 0L),
-                    "usageBreakdown" to UsageStatsHelper.getTodayUsageBreakdown(ctx, packageName)
+                    "appName"     to appName,
+                    "score"       to score,
+                    "level"       to ScoreEngine.scoreToLevel(score),
+                    "usageMs"     to ((usageRaw["total"]   as? Number)?.toLong() ?: 0L),
+                    "usageBreakdown" to mapOf(
+                        "early"   to ((usageRaw["early"]   as? Number)?.toLong() ?: 0L),
+                        "work"    to ((usageRaw["work"]    as? Number)?.toLong() ?: 0L),
+                        "evening" to ((usageRaw["evening"] as? Number)?.toLong() ?: 0L),
+                        "night"   to ((usageRaw["night"]   as? Number)?.toLong() ?: 0L),
+                    ),
+                    "category" to getAppCategory(ctx, packageName)
                 )
             )
         }
 
-        return result.sortedByDescending {
-            it["score"] as Int
-        }
+        return result.sortedByDescending { it["score"] as Int }
     }
 
     // ── Getters for ScoreEngine ──────────────────────────────────
@@ -1064,14 +1129,12 @@ object SessionTracker {
     fun applyDailyResetIfNeeded(ctx: Context, packageName: String) {
         val prefs   = prefs(ctx)
         val today   = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
-        val lastDay = prefs.getInt(KEY_LAST_RESET_DAY, -1)
+        val lastDay = prefs.getInt(resetDayKey(packageName), -1)
 
         if (today != lastDay) {
-            val current = getStoredScore(ctx, packageName)
-            val capped  = minOf(current, LuminaConfig.Reset.NEW_DAY_SCORE_CAP)
             prefs.edit()
-                .putInt(scoreKey(packageName), capped)
-                .putInt(KEY_LAST_RESET_DAY, today)
+                .putInt(scoreKey(packageName), 0)
+                .putInt(resetDayKey(packageName), today)
                 .apply()
         }
     }

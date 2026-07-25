@@ -13,6 +13,9 @@
         android:name="android.permission.FOREGROUND_SERVICE" />
 
     <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <uses-permission
         android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Query launchable apps -->

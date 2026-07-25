@@ -5,9 +5,9 @@ export type DailySnapshot = {
 
   totalUsageMs: number;
 
-  morningUsageMs: number;
+  earlyUsageMs: number;
 
-  afternoonUsageMs: number;
+  workUsageMs: number;
 
   eveningUsageMs: number;
 
@@ -64,7 +64,7 @@ export default function DailyStatsCard({
           <Text style={styles.bucketEmoji}>🌅</Text>
 
           <Text style={styles.bucketValue}>
-            {formatUsage(snapshot.morningUsageMs)}
+            {formatUsage(snapshot.earlyUsageMs)}
           </Text>
 
           <Text style={styles.bucketLabel}>Morning</Text>
@@ -74,7 +74,7 @@ export default function DailyStatsCard({
           <Text style={styles.bucketEmoji}>☀️</Text>
 
           <Text style={styles.bucketValue}>
-            {formatUsage(snapshot.afternoonUsageMs)}
+            {formatUsage(snapshot.workUsageMs)}
           </Text>
 
           <Text style={styles.bucketLabel}>Afternoon</Text>

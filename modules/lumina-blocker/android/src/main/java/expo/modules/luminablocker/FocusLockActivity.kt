@@ -13,8 +13,24 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.content.Intent
+import android.app.ActivityManager
 
 class FocusLockActivity : Activity() {
+
+    companion object {
+        @Volatile
+        var isVisible = false
+
+        private var lastRelaunchAt = 0L
+
+        @Synchronized
+        fun allowRelaunch(): Boolean {
+            val now = System.currentTimeMillis()
+            if (now - lastRelaunchAt < 1_500L) return false
+            lastRelaunchAt = now
+            return true
+        }
+    }
 
     // ─────────────────────────────────────────────
     // Handlers
@@ -44,6 +60,11 @@ class FocusLockActivity : Activity() {
 
     private var remainingSeconds =0
 
+    private var totalSessionDurationMs = 0L
+
+    private var sessionStartMs = 0L
+    private var sessionFinalized = false
+
     // ─────────────────────────────────────────────
     // Volume Hold State
     // ─────────────────────────────────────────────
@@ -66,11 +87,12 @@ class FocusLockActivity : Activity() {
 
             override fun run() {
 
-                val mins =
-                    remainingSeconds / 60
+                val remainingMs = (totalSessionDurationMs - elapsedSessionMs())
+                    .coerceAtLeast(0L)
+                remainingSeconds = ((remainingMs + 999L) / 1000L).toInt()
 
-                val secs =
-                    remainingSeconds % 60
+                val mins = remainingSeconds / 60
+                val secs = remainingSeconds % 60
 
                 timerView.text =
                     String.format(
@@ -79,25 +101,13 @@ class FocusLockActivity : Activity() {
                         secs
                     )
 
-                if (
-                    remainingSeconds <= 0
-                ) {
-                    FocusSessionStore.saveSession(
-                        applicationContext,
-                        intent.getLongExtra("durationMs", 0L),
-                        true
-                    )
-
-                    exitFocusMode()
-
+                if (remainingMs <= 0L) {
+                    finalizeSession(true)
                     return
                 }
-
-                remainingSeconds--
-
                 timerHandler.postDelayed(
                     this,
-                    1000
+                    minOf(1000L, remainingMs)
                 )
             }
         }
@@ -134,7 +144,7 @@ class FocusLockActivity : Activity() {
         }
 
         if (LuminaFocusConfig.ENABLE_KIOSK_BEHAVIOR) {
-            try { startLockTask() } catch (e: Exception) { e.printStackTrace() }
+            ensureLockTask()
         }
 
         // ─────────────────────────────────────────
@@ -151,7 +161,7 @@ class FocusLockActivity : Activity() {
                     Gravity.CENTER
 
                 setBackgroundColor(
-                    Color.parseColor("#0e1412")
+                    Color.parseColor("#000000")
                 )
 
                 setPadding(
@@ -224,14 +234,14 @@ class FocusLockActivity : Activity() {
                     "Stay present.\nYour device is locked."
 
                 textSize =
-                    16f
+                    14f
 
                 gravity =
                     Gravity.CENTER
 
                 setTextColor(
                     Color.parseColor(
-                        "#6f8a7b"
+                        "#8A8A94"
                     )
                 )
             }
@@ -254,7 +264,7 @@ class FocusLockActivity : Activity() {
 
                 setTextColor(
                     Color.parseColor(
-                        "#4f6a5d"
+                        "#8A8A94"
                     )
                 )
 
@@ -301,7 +311,7 @@ class FocusLockActivity : Activity() {
 
                 setBackgroundColor(
                     Color.parseColor(
-                        "#4caf7d"
+                        "#8A8A94"
                     )
                 )
             }
@@ -331,7 +341,7 @@ class FocusLockActivity : Activity() {
 
                 setTextColor(
                     Color.parseColor(
-                        "#355245"
+                        "#8A8A94"
                     )
                 )
 
@@ -365,17 +375,24 @@ class FocusLockActivity : Activity() {
         // Start Timer
         // ─────────────────────────────────────────
 
-        val durationMs =
-            intent.getLongExtra(
-                "durationMs",
-                LuminaFocusConfig
-                    .DEFAULT_FOCUS_DURATION_MS
+        val requestedDurationMs = intent.getLongExtra(
+            "durationMs",
+            LuminaFocusConfig.DEFAULT_FOCUS_DURATION_MS
+        )
+        val activeSession = FocusSessionStore.getActiveSession(applicationContext)
+        if (activeSession != null) {
+            sessionStartMs = activeSession.first
+            totalSessionDurationMs = activeSession.second
+        } else {
+            sessionStartMs = FocusSessionStore.beginSession(
+                applicationContext,
+                requestedDurationMs
             )
+            totalSessionDurationMs = requestedDurationMs
+        }
 
-        remainingSeconds =
-            (
-                durationMs / 1000
-            ).toInt()
+        remainingSeconds = ((totalSessionDurationMs - elapsedSessionMs())
+            .coerceAtLeast(0L) + 999L).div(1000L).toInt()
 
         timerView.text =
             formatSeconds(
@@ -384,6 +401,12 @@ class FocusLockActivity : Activity() {
         timerHandler.post(
             timerRunnable
         )
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent != null) setIntent(intent)
+        enforceLock()
     }
 
     // ─────────────────────────────────────────────
@@ -465,7 +488,7 @@ class FocusLockActivity : Activity() {
                                         requiredSeconds
                                     ) {
 
-                                        exitFocusMode()
+                                        finalizeSession(false)
 
                                     } else {
 
@@ -534,6 +557,34 @@ class FocusLockActivity : Activity() {
     // Exit Focus Mode
     // ─────────────────────────────────────────────
 
+    private fun elapsedSessionMs(): Long {
+        return (System.currentTimeMillis() - sessionStartMs)
+            .coerceIn(0L, totalSessionDurationMs)
+    }
+
+    private fun finalizeSession(completed: Boolean) {
+        if (sessionFinalized) return
+        sessionFinalized = true
+
+        val durationMs = if (completed) {
+            totalSessionDurationMs
+        } else {
+            elapsedSessionMs()
+        }
+        FocusSessionStore.saveSession(
+            applicationContext,
+            durationMs,
+            totalSessionDurationMs,
+            completed
+        )
+        FocusSessionStore.clearActiveSession(applicationContext)
+        LuminaBlockerModule.emitEvent(
+            "onFocusComplete",
+            mapOf("completed" to completed)
+        )
+        exitFocusMode()
+    }
+
     // private fun exitFocusMode() {
 
     //     try {
@@ -581,14 +632,16 @@ class FocusLockActivity : Activity() {
     // Cleanup
     // ─────────────────────────────────────────────
 
-    override fun onPause() {
-        super.onPause()
-        android.util.Log.d("LUMINA", "FocusLockActivity onPause")
-    }
-
     override fun onResume() {
         super.onResume()
+        isVisible = true
         enforceLock()
+    }
+
+    override fun onPause() {
+        isVisible = false
+        super.onPause()
+        android.util.Log.d("LUMINA", "FocusLockActivity onPause")
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -596,18 +649,9 @@ class FocusLockActivity : Activity() {
         if (hasFocus) enforceLock()
     }
 
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        // Fire relaunch immediately before the transition happens
-        relaunchSelf()
-    }
-
     override fun onStop() {
         super.onStop()
-        if (LuminaFocusService.isActive && !isFinishing) {
-            relaunchSelf()
-        }
+        isVisible = false
     }
 
     private fun enforceLock() {
@@ -624,6 +668,15 @@ class FocusLockActivity : Activity() {
         }
 
         if (LuminaFocusConfig.ENABLE_KIOSK_BEHAVIOR) {
+            ensureLockTask()
+        }
+    }
+
+    private fun ensureLockTask() {
+        val activityManager = getSystemService(ActivityManager::class.java)
+        val lockTaskActive = activityManager?.lockTaskModeState !=
+            ActivityManager.LOCK_TASK_MODE_NONE
+        if (!lockTaskActive) {
             try { startLockTask() } catch (_: Exception) {}
         }
     }
@@ -631,17 +684,25 @@ class FocusLockActivity : Activity() {
 
     private fun relaunchSelf() {
         val intent = Intent(this, FocusLockActivity::class.java).apply {
+
+            putExtra(
+                "durationMs",
+                totalSessionDurationMs
+            )
+
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                Intent.FLAG_ACTIVITY_NO_HISTORY
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             )
         }
+
         startActivity(intent)
     }
 
     override fun onDestroy() {
+
+        isVisible = false
 
         super.onDestroy()
 

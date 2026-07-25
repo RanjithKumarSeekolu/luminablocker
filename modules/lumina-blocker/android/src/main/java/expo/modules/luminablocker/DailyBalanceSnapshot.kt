@@ -6,9 +6,9 @@ data class DailyBalanceSnapshot(
 
     val totalUsageMs: Long,
 
-    val morningUsageMs: Long,
+    val earlyUsageMs: Long,
 
-    val afternoonUsageMs: Long,
+    val workUsageMs: Long,
 
     val eveningUsageMs: Long,
 

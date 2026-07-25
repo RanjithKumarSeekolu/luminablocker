@@ -7,13 +7,15 @@ const LuminaBlocker = requireNativeModule("LuminaBlocker");
 export type InstalledApp = {
   packageName: string;
   label: string;
+  category: string;
+  icon?: string;
 };
 
 export type DailySnapshot = {
   date: string;
   totalUsageMs: number;
-  morningUsageMs: number;
-  afternoonUsageMs: number;
+  earlyUsageMs: number;
+  workUsageMs: number;
   eveningUsageMs: number;
   nightUsageMs: number;
   reopenEvents: number;
@@ -35,6 +37,7 @@ export type FocusSession = {
   date: string;
   durationMs: number;
   completed: boolean;
+  targetDurationMs: number;
   timestamp: number;
 };
 
@@ -72,6 +75,36 @@ export function getBlockedApps(): string[] {
   return LuminaBlocker.getBlockedApps();
 }
 
+export function isMindfulRemindersEnabled(): boolean {
+  return LuminaBlocker.isMindfulRemindersEnabled();
+}
+
+export function setMindfulRemindersEnabled(enabled: boolean): void {
+  return LuminaBlocker.setMindfulRemindersEnabled(enabled);
+}
+
+export type AppSettings = {
+  intensity: number;
+  mindfulReminder: boolean;
+  nightLock: boolean;
+};
+
+export function getAppSettings(packageName: string): AppSettings {
+  return LuminaBlocker.getAppSettings(packageName);
+}
+
+export function setAppIntensity(packageName: string, intensity: 0 | 1 | 2): void {
+  return LuminaBlocker.setAppIntensity(packageName, intensity);
+}
+
+export function setMindfulReminder(packageName: string, enabled: boolean): void {
+  return LuminaBlocker.setMindfulReminder(packageName, enabled);
+}
+
+export function setNightLock(packageName: string, enabled: boolean): void {
+  return LuminaBlocker.setNightLock(packageName, enabled);
+}
+
 // ── Score + level ─────────────────────────────────────────────
 
 /** Raw cumulative score — useful for debugging or displaying progress. */
@@ -85,8 +118,8 @@ export function getCurrentLevel(packageName: string): number {
 }
 
 /** Hard-reset score to 0 (e.g. from a settings screen). */
-export function resetScore(): void {
-  return LuminaBlocker.resetScore();
+export function resetScore(packageName: string): void {
+  return LuminaBlocker.resetScore(packageName);
 }
 
 /**
@@ -94,8 +127,8 @@ export function resetScore(): void {
  * Call when user taps "I'll focus now" or similar.
  * Returns the new score.
  */
-export function applyFocusReset(): number {
-  return LuminaBlocker.applyFocusReset();
+export function applyFocusReset(packageName: string): number {
+  return LuminaBlocker.applyFocusReset(packageName);
 }
 
 // ── Session notify ────────────────────────────────────────────
@@ -148,8 +181,8 @@ export function getWeeklyUsageForApp(packageName: string) {
 
 export function getTodayUsageBreakdown(packageName: string): {
   total: number;
-  morning: number;
-  afternoon: number;
+  early: number;
+  work: number;
   evening: number;
   night: number;
 } {
@@ -204,8 +237,8 @@ export function stopOverlay(): void {
 
 // ── Daily snapshots ───────────────────────────────────────────
 // Returns an array of daily snapshots for the past week, including today.
-export function getDailySnapshots() {
-  return JSON.parse(LuminaBlocker.getDailySnapshots());
+export function getDailySnapshots(days: number = 7) {
+  return LuminaBlocker.getDailySnapshots(days);
 }
 
 // ── Accessibility ─────────────────────────────────────────────
@@ -280,6 +313,18 @@ export function isVolumeExitAllowed(): boolean {
   return LuminaBlocker.isVolumeExitAllowed();
 }
 
+export function setIsVolumeExitAllowed(allowed: boolean): void {
+  LuminaBlocker.setIsVolumeExitAllowed(allowed);
+}
+
+export function isOverlayEnabled(): boolean {
+  return LuminaBlocker.isOverlayEnabled();
+}
+
+export function setOverlayEnabled(enabled: boolean): void {
+  LuminaBlocker.setOverlayEnabled(enabled);
+}
+
 /** Today's total focus time in milliseconds */
 export function getTodayFocusMs(): number {
   return LuminaBlocker.getTodayFocusMs();
@@ -293,4 +338,8 @@ export function getWeeklyFocusData(): WeeklyFocusDay[] {
 /** All focus sessions as raw JSON string */
 export function getAllFocusSessions(): FocusSession[] {
   return JSON.parse(LuminaBlocker.getAllFocusSessions());
+}
+
+export function clearAllData(): void {
+  return LuminaBlocker.clearAllData();
 }

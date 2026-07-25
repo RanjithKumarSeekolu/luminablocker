@@ -2,10 +2,16 @@ package expo.modules.luminablocker
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.net.Uri
 import android.provider.Settings
+import android.util.Base64
+import java.io.ByteArrayOutputStream
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import android.util.Log
 
 class LuminaBlockerModule : Module() {
 
@@ -13,6 +19,27 @@ class LuminaBlockerModule : Module() {
         ?: throw IllegalStateException("React context unavailable")
 
     private fun prefs() = ctx.getSharedPreferences("LuminaPrefs", Context.MODE_PRIVATE)
+
+    /** Encode the launcher icon so React Native can render the real icon for
+     * every installed app instead of relying on a small hardcoded icon map. */
+    private fun launcherIconDataUri(pm: PackageManager, packageName: String): String {
+        return try {
+            val drawable = pm.getApplicationIcon(packageName)
+            val size = 96
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(canvas)
+
+            val output = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            bitmap.recycle()
+            "data:image/png;base64," +
+                Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        } catch (_: Exception) {
+            ""
+        }
+    }
 
     // ── Static emitter — called from AccessibilityService ────────
     companion object {
@@ -43,23 +70,60 @@ class LuminaBlockerModule : Module() {
                 ?.toList() ?: emptyList<String>()
         }
 
+        Function("isMindfulRemindersEnabled") {
+            prefs().getBoolean("mindfulReminders", true)
+        }
+
+        Function("setMindfulRemindersEnabled") { enabled: Boolean ->
+            prefs().edit()
+                .putBoolean("mindfulReminders", enabled)
+                .apply()
+            null
+        }
+
+        Function("getAppSettings") { packageName: String ->
+            mapOf(
+                "intensity" to prefs().getInt("app_intensity_$packageName", -1),
+                "mindfulReminder" to prefs().getBoolean("app_mindful_$packageName", true),
+                "nightLock" to prefs().getBoolean("app_night_lock_$packageName", false)
+            )
+        }
+
+        Function("setAppIntensity") { packageName: String, intensity: Int ->
+            prefs().edit()
+                .putInt("app_intensity_$packageName", intensity.coerceIn(0, 2))
+                .apply()
+            null
+        }
+
+        Function("setMindfulReminder") { packageName: String, enabled: Boolean ->
+            prefs().edit()
+                .putBoolean("app_mindful_$packageName", enabled)
+                .apply()
+            null
+        }
+
+        Function("setNightLock") { packageName: String, enabled: Boolean ->
+            prefs().edit()
+                .putBoolean("app_night_lock_$packageName", enabled)
+                .apply()
+            null
+        }
+
         // --─ Daily snapshots ────────────────────────────────────────
-        Function("getDailySnapshots") {
 
-            SessionTracker.getDailySnapshots(
-                appContext.reactContext!!
-            )
+        Function("getAppDailySnapshots") {
+            SessionTracker.getAppDailySnapshots(appContext.reactContext!!)
         }
 
-        Function("hasUsagePermission") {
-            UsageStatsHelper.hasUsagePermission(ctx)
+        // NEW
+        Function("getDailySnapshots") { days: Int ->
+            SessionTracker.getDailySnapshots(appContext.reactContext!!, days)
         }
 
+        // ── Usage permission — keep ONE only ─────────────────────────
         Function("hasUsagePermission") {
-
-            UsageStatsHelper.hasUsagePermission(
-                appContext.reactContext!!
-            )
+            UsageStatsHelper.hasUsagePermission(appContext.reactContext!!)
         }
 
         Function("getAppDailySnapshots") {
@@ -71,7 +135,7 @@ class LuminaBlockerModule : Module() {
 
         Function("getWeeklyUsageForApp") { packageName: String ->
 
-            UsageStatsHelper
+            SessionTracker
                 .getWeeklyUsageForApp(
                     appContext.reactContext!!,
                     packageName
@@ -224,11 +288,17 @@ class LuminaBlockerModule : Module() {
             val intent = Intent(Intent.ACTION_MAIN, null).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
             }
+
             pm.queryIntentActivities(intent, 0)
                 .map {
+                    val packageName = it.activityInfo.packageName
+
                     mapOf(
-                        "packageName" to it.activityInfo.packageName,
-                        "label"       to it.loadLabel(pm).toString()
+                        "packageName" to packageName,
+                        "label"       to it.loadLabel(pm).toString(),
+                        "category" to AppCategoryResolver.getCategory(packageName),
+                        "icon"        to launcherIconDataUri(pm, packageName)
+
                     )
                 }
                 .sortedBy { it["label"] }
@@ -294,14 +364,45 @@ class LuminaBlockerModule : Module() {
         Function("isVolumeExitAllowed") {
             LuminaFocusConfig.ALLOW_VOLUME_EXIT
         }
+
+        Function("setIsVolumeExitAllowed") { allowed: Boolean ->
+            LuminaFocusConfig.ALLOW_VOLUME_EXIT = allowed
+
+            Log.d(
+                "LuminaFocus",
+                "allowVolumeExit -> $allowed"
+            )
+
+            null
+        }
+
+        Function("isOverlayEnabled") {
+            prefs().getBoolean("overlayEnabled", true)
+        }
+
+        Function("setOverlayEnabled") { enabled: Boolean ->
+            prefs().edit()
+                .putBoolean("overlayEnabled", enabled)
+                .apply()
+            null
+        }
         
         Function(
             "startFocusLock"
         ) { durationMs: Long ->
 
+            Log.d("LuminaBlockerFocus", "Starting focus lock for ${durationMs}ms")
+
+            // The activity renders the lock screen, while the foreground
+            // service keeps focus mode active when another app/window appears.
+            LuminaFocusService.start(ctx, durationMs, headless = true)
+
             val activity =
                 appContext.currentActivity
                     ?: return@Function null
+
+            Log.d("LuminaBlockerFocus", "Current activity: ${activity.localClassName}")
+
 
             val intent =
                 Intent(
@@ -313,8 +414,12 @@ class LuminaBlockerModule : Module() {
                         "durationMs",
                         durationMs
                     )
-                }
+            }
 
+            Log.d("LuminaBlockerFocus", "Starting focus lock activity")
+            // Count the direct launch so the service watchdog does not launch
+            // a second copy during the startup transition.
+            FocusLockActivity.allowRelaunch()
             activity.startActivity(
                 intent
             )
@@ -332,6 +437,15 @@ class LuminaBlockerModule : Module() {
 
         Function("getAllFocusSessions") {
             FocusSessionStore.getAllSessions(appContext.reactContext!!)
+        }
+
+        Function("clearAllData") {
+            listOf("LuminaSession", "LuminaHistory", "LuminaPrefs", "LuminaFocus")
+                .forEach { name ->
+                    ctx.getSharedPreferences(name, Context.MODE_PRIVATE)
+                        .edit().clear().apply()
+                }
+            null
         }
     }
 }
