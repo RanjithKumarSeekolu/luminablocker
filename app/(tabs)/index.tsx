@@ -1,6 +1,7 @@
 import { Colors, Radius, Spacing, Typography } from "@/constants/theme";
 import { formatUsage, getCurrentTimeSlot, getGreeting } from "@/constants/utils";
 import { DailySnapshot } from "@/modules/lumina-blocker";
+import { fetchAiInsights, type AiInsight } from "@/services/aiInsights";
 import { getStore, refreshLuminaStore, subscribe } from "@/store/luminaStore";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
@@ -8,9 +9,11 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   AppState,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -32,30 +35,187 @@ export type AppFocusData = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function GrowthInsight({ targets }: { targets: AppFocusData[] }) {
-  const topTarget = [...targets].sort((a, b) => b.usageMs - a.usageMs)[0];
-  const hasUsage = topTarget && topTarget.usageMs > 0;
+const AI_TONE_COLORS = {
+  primary: Colors.primary,
+  success: Colors.success,
+  warning: Colors.danger,
+} as const;
+
+function GrowthInsightCard({
+  insight,
+  loading,
+  onPress,
+}: {
+  insight?: AiInsight;
+  loading: boolean;
+  onPress: () => void;
+}) {
+  if (!insight && !loading) return null;
 
   return (
-    <View style={styles.insightCard}>
-      <View style={styles.insightAccent} />
-      <View style={styles.insightContent}>
-        <Text style={styles.insightLabel}>GROWTH INSIGHT</Text>
-        {hasUsage ? (
-          <Text style={styles.insightText}>
-            Your highest focus-target usage today is{" "}
-            <Text style={styles.insightHighlight}>{topTarget.appName}</Text> at{" "}
-            {formatUsage(topTarget.usageMs)}. Notice the pattern and choose your
-            next pause intentionally.
-          </Text>
-        ) : (
-          <Text style={styles.insightText}>
-            Add a focus target and use it today to start building a meaningful
-            usage pattern.
-          </Text>
+    <TouchableOpacity
+      style={styles.growthInsightCard}
+      activeOpacity={0.82}
+      onPress={onPress}
+      disabled={!insight}
+    >
+      <View style={styles.growthInsightAccent} />
+      <View style={styles.growthInsightContent}>
+        <View style={styles.growthInsightHeader}>
+          <View style={styles.growthInsightLabelRow}>
+            <Ionicons name="sparkles" size={17} color={Colors.success} />
+            <Text style={styles.growthInsightLabel}>GROWTH INSIGHT</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+        </View>
+        <Text style={styles.growthInsightText}>
+          {loading
+            ? "Analyzing your recent usage pattern..."
+            : insight?.body}
+        </Text>
+        {insight && (
+          <Text style={styles.growthInsightAction}>See more  →</Text>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
+  );
+}
+
+function InsightsModal({
+  visible,
+  insights,
+  targets,
+  weeklyFocusData,
+  onClose,
+}: {
+  visible: boolean;
+  insights: AiInsight[];
+  targets: AppFocusData[];
+  weeklyFocusData: { date: string; totalMs: number; sessionCount: number }[];
+  onClose: () => void;
+}) {
+  const weeklyTotal = weeklyFocusData.reduce((sum, day) => sum + day.totalMs, 0);
+  const weeklySessions = weeklyFocusData.reduce(
+    (sum, day) => sum + day.sessionCount,
+    0,
+  );
+  const topTargets = [...targets]
+    .filter((target) => target.usageMs > 0)
+    .sort((a, b) => b.usageMs - a.usageMs)
+    .slice(0, 3);
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={styles.insightsModal}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="arrow-back" size={22} color={Colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Insights</Text>
+            <Ionicons name="share-outline" size={20} color={Colors.textSecondary} />
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.modalContent}
+          >
+            {insights[0] && (
+              <View style={styles.featuredCard}>
+                <View style={styles.featuredTopRow}>
+                  <Text style={styles.featuredLabel}>FEATURED ANALYSIS</Text>
+                  <Ionicons
+                    name={insights[0].icon as any}
+                    size={27}
+                    color={Colors.success}
+                  />
+                </View>
+                <Text style={styles.featuredTitle}>{insights[0].title}</Text>
+                <Text style={styles.featuredBody}>{insights[0].body}</Text>
+                <Text style={styles.featuredRecommendation}>
+                  →  {insights[0].recommendation}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.modalSectionHeader}>
+              <Text style={styles.modalSectionTitle}>WEEKLY FOCUS VOLUME</Text>
+              <Text style={styles.modalSectionMeta}>Last 7 days</Text>
+            </View>
+            <View style={styles.volumeCard}>
+              <Text style={styles.volumeValue}>
+                {formatUsage(weeklyTotal)}
+              </Text>
+              <Text style={styles.volumeCaption}>{weeklySessions} focus sessions</Text>
+              <View style={styles.volumeBars}>
+                {weeklyFocusData.map((day) => {
+                  const max = Math.max(...weeklyFocusData.map((item) => item.totalMs), 1);
+                  return (
+                    <View key={day.date} style={styles.volumeBarTrack}>
+                      <View
+                        style={[
+                          styles.volumeBar,
+                          { height: Math.max((day.totalMs / max) * 52, day.totalMs > 0 ? 5 : 2) },
+                        ]}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.modalSectionHeader}>
+              <Text style={styles.modalSectionTitle}>DISTRACTION PATTERNS</Text>
+              <Text style={styles.modalSectionMeta}>Focus targets</Text>
+            </View>
+            <View style={styles.patternCard}>
+              {topTargets.length === 0 ? (
+                <Text style={styles.emptyModalText}>Use a focus target to reveal your strongest patterns.</Text>
+              ) : (
+                topTargets.map((target) => (
+                  <View key={target.packageName} style={styles.patternRow}>
+                    <View style={styles.patternIcon}>
+                      {target.icon ? (
+                        <Image source={{ uri: target.icon }} style={styles.patternAppIcon} />
+                      ) : (
+                        <Ionicons name="apps" size={16} color={Colors.textSecondary} />
+                      )}
+                    </View>
+                    <View style={styles.patternMeta}>
+                      <Text style={styles.patternName}>{target.appName}</Text>
+                      <Text style={styles.patternUsage}>{formatUsage(target.usageMs)} today</Text>
+                    </View>
+                    <Text style={styles.patternLevel}>{target.level > 0 ? `L${target.level}` : "—"}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            <View style={styles.modalSectionHeader}>
+              <Text style={styles.modalSectionTitle}>MINDFUL PATHS</Text>
+              <Text style={styles.modalSectionMeta}>Try next</Text>
+            </View>
+            {insights.slice(1).map((insight) => {
+              const tone = AI_TONE_COLORS[insight.tone];
+              return (
+                <View key={insight.id} style={[styles.pathCard, { borderLeftColor: tone }]}>
+                  <Ionicons name={insight.icon as any} size={20} color={tone} />
+                  <View style={styles.pathContent}>
+                    <Text style={styles.pathTitle}>{insight.title}</Text>
+                    <Text style={styles.pathBody}>{insight.recommendation}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -210,13 +370,39 @@ function FocusTargets({ targets }: { targets: AppFocusData[] }) {
 
 export default function Reflect() {
   const [data, setData] = useState(getStore());
+  const [aiInsights, setAiInsights] = useState<AiInsight[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(false);
+  const [showInsightsModal, setShowInsightsModal] = useState(false);
 
-  const refresh = useCallback(() => {
-    return refreshLuminaStore()
-      .then(() => setData({ ...getStore() }))
-      .catch(() => {
-        // Native permission/state changes should not break the Reflect screen.
-      });
+  const refresh = useCallback(async () => {
+    try {
+      await refreshLuminaStore();
+      const next = { ...getStore() };
+      setData(next);
+
+      if (next.focusTargets.length === 0) {
+        setAiInsights([]);
+        setAiError(false);
+        return;
+      }
+
+      setAiLoading(true);
+      setAiError(false);
+      try {
+        const insights = await fetchAiInsights(
+          next.focusTargets,
+          next.weeklyUsageMap,
+        );
+        setAiInsights(insights);
+      } catch {
+        setAiError(true);
+      } finally {
+        setAiLoading(false);
+      }
+    } catch {
+      // Native permission/state changes should not break the Reflect screen.
+    }
   }, []);
 
   // Keep in sync when store updates from background init
@@ -264,11 +450,22 @@ export default function Reflect() {
           <Text style={styles.focusTime}>{formatUsage(data.todayFocusMs)}</Text>
         </View>
 
-        <GrowthInsight targets={data.focusTargets} />
+        <GrowthInsightCard
+          insight={aiInsights[0]}
+          loading={aiLoading}
+          onPress={() => setShowInsightsModal(true)}
+        />
         <TimeDistribution snapshot={data.snapshot} />
         <FocusTargets targets={data.focusTargets} />
         <View style={styles.bottomSpacer} />
       </ScrollView>
+      <InsightsModal
+        visible={showInsightsModal}
+        insights={aiInsights}
+        targets={data.focusTargets}
+        weeklyFocusData={data.weeklyFocusData}
+        onClose={() => setShowInsightsModal(false)}
+      />
     </View>
   );
 }
@@ -316,11 +513,260 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     letterSpacing: -1,
   },
+  growthInsightCard: {
+    flexDirection: "row",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.xxl,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  growthInsightAccent: {
+    width: 4,
+    backgroundColor: Colors.success,
+  },
+  growthInsightContent: {
+    flex: 1,
+    padding: Spacing.lg,
+  },
+  growthInsightHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  growthInsightLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+  },
+  growthInsightLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.success,
+    letterSpacing: 1.5,
+  },
+  growthInsightText: {
+    ...Typography.body,
+    color: Colors.text,
+    lineHeight: 24,
+  },
+  growthInsightAction: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.primary,
+    marginTop: Spacing.lg,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "flex-end",
+  },
+  insightsModal: {
+    flex: 1,
+    marginTop: 44,
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    overflow: "hidden",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  modalTitle: {
+    ...Typography.heading,
+    color: Colors.text,
+  },
+  modalContent: {
+    padding: Spacing.xl,
+    paddingBottom: Spacing.xxl,
+  },
+  featuredCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    marginBottom: Spacing.xxl,
+  },
+  featuredTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  featuredLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.3,
+    color: Colors.success,
+  },
+  featuredTitle: {
+    ...Typography.heading,
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
+  featuredBody: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  featuredRecommendation: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.success,
+    marginTop: Spacing.lg,
+  },
+  modalSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.md,
+  },
+  modalSectionTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    color: Colors.textSecondary,
+  },
+  modalSectionMeta: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  volumeCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    marginBottom: Spacing.xxl,
+  },
+  volumeValue: {
+    fontSize: 30,
+    fontWeight: "700",
+    color: Colors.primary,
+  },
+  volumeCaption: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: Spacing.xs,
+  },
+  volumeBars: {
+    height: 66,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  volumeBarTrack: {
+    flex: 1,
+    height: 58,
+    justifyContent: "flex-end",
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: Radius.sm,
+    overflow: "hidden",
+  },
+  volumeBar: {
+    width: "100%",
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.sm,
+  },
+  patternCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.xxl,
+  },
+  patternRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.sm,
+  },
+  patternIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: Spacing.md,
+    overflow: "hidden",
+  },
+  patternAppIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.sm,
+  },
+  patternMeta: {
+    flex: 1,
+  },
+  patternName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.text,
+  },
+  patternUsage: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  patternLevel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primary,
+  },
+  emptyModalText: {
+    ...Typography.body,
+    color: Colors.textMuted,
+    lineHeight: 21,
+    paddingVertical: Spacing.sm,
+  },
+  pathCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderLeftWidth: 3,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  pathContent: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  pathTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+  },
+  pathBody: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
   insightCard: {
     flexDirection: "row",
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
-    marginBottom: Spacing.xxl,
+    marginBottom: Spacing.md,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: Colors.border,
@@ -333,21 +779,47 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: Spacing.lg,
   },
+  aiInsightsSection: {
+    marginBottom: Spacing.xxl,
+  },
+  insightLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
   insightLabel: {
     fontSize: 10,
     fontWeight: "700",
     color: Colors.success,
     letterSpacing: 1.5,
-    marginBottom: Spacing.sm,
+  },
+  insightTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: Colors.text,
+    marginBottom: Spacing.xs,
   },
   insightText: {
     ...Typography.body,
     color: Colors.text,
     lineHeight: 21,
   },
-  insightHighlight: {
-    color: Colors.primary,
+  recommendationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  recommendationText: {
+    flex: 1,
+    fontSize: 12,
     fontWeight: "600",
+    color: Colors.textSecondary,
+    lineHeight: 18,
   },
   section: {
     marginBottom: Spacing.xxl,
