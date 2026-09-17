@@ -39,6 +39,16 @@ let store: LuminaStore = {
   isReady: false,
 };
 
+let preferredFocusMinutes = 45;
+
+export function setPreferredFocusMinutes(minutes: number) {
+  preferredFocusMinutes = minutes;
+}
+
+export function getPreferredFocusMinutes() {
+  return preferredFocusMinutes;
+}
+
 let listeners: (() => void)[] = [];
 let refreshRequestId = 0;
 

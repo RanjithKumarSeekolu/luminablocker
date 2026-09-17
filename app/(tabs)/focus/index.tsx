@@ -7,7 +7,12 @@ import {
   startFocusLock,
   type FocusSession,
 } from "@/modules/lumina-blocker";
-import { getStore, refreshLuminaStore, subscribe } from "@/store/luminaStore";
+import {
+  getPreferredFocusMinutes,
+  getStore,
+  refreshLuminaStore,
+  subscribe,
+} from "@/store/luminaStore";
 import { Feather } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -39,7 +44,7 @@ function getTodaySessions(): FocusSession[] {
 }
 
 export default function FocusScreen() {
-  const [duration, setDuration] = useState(45);
+  const [duration, setDuration] = useState(getPreferredFocusMinutes);
   const [recentSessions, setRecentSessions] = useState<FocusSession[]>([]);
   // Read todayFocusMs from store — already loaded at startup
   const [todayFocusMs, setTodayFocusMs] = useState(getStore().todayFocusMs);
@@ -181,7 +186,10 @@ export default function FocusScreen() {
         </ScrollView>
 
         <TouchableOpacity
-          style={[styles.startButton, focusActive && styles.startButtonDisabled]}
+          style={[
+            styles.startButton,
+            focusActive && styles.startButtonDisabled,
+          ]}
           onPress={handleStart}
           disabled={focusActive}
         >

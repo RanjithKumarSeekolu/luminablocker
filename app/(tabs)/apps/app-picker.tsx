@@ -35,6 +35,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 // ─── Category config ───────────────────────────────────────────────────────────
@@ -490,13 +491,14 @@ export default function AddDistractingAppScreen({
   }, [allApps, query, activeCategory, selectedIds]);
 
   const allOk = accessibilityOn && overlayOk && usageOk;
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0F" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity
           onPress={() => {
             if (router.canGoBack()) router.back();
@@ -626,7 +628,10 @@ export default function AddDistractingAppScreen({
       <FlatList
         data={filtered}
         keyExtractor={(item, index) => item.packageName + "-" + index}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[
+          styles.list,
+          { paddingBottom: 60 + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <Text style={styles.listHeader}>INSTALLED APPS</Text>
@@ -692,7 +697,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 10,
     paddingBottom: 14,
   },
   headerTitle: {

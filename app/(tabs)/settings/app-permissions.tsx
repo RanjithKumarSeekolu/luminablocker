@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
@@ -124,8 +125,9 @@ const PERMISSIONS: Permission[] = [
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function Header({ onBack }: { onBack?: () => void }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
       <TouchableOpacity style={styles.headerBtn} onPress={onBack}>
         <Text style={styles.headerBtnText}>←</Text>
       </TouchableOpacity>
@@ -205,6 +207,7 @@ function PermissionCard({
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function PermissionsScreen({ onBack }: { onBack?: () => void }) {
+  const insets = useSafeAreaInsets();
   // Derive live granted state from OS checks
   const getGrantedSet = useCallback((): Set<string> => {
     const s = new Set<string>();
@@ -229,7 +232,10 @@ export default function PermissionsScreen({ onBack }: { onBack?: () => void }) {
       <Header onBack={onBack ?? (() => router.back())} />
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 48 + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Hero */}
@@ -273,7 +279,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingBottom: 14,
   },
   headerBtn: {
     width: 38,

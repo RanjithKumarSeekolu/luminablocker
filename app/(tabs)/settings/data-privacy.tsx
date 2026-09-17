@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
 const Colors = {
@@ -294,6 +295,7 @@ const nt = StyleSheet.create({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function PrivacyVaultScreen() {
+  const insets = useSafeAreaInsets();
   const eraseScale = useRef(new Animated.Value(1)).current;
 
   const onErasePressIn = () =>
@@ -333,7 +335,7 @@ export default function PrivacyVaultScreen() {
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       {/* ── Top Bar ── */}
-      <View style={s.topBar}>
+      <View style={[s.topBar, { paddingTop: insets.top + Spacing.lg }]}>
         <TouchableOpacity
           style={s.backBtn}
           activeOpacity={0.7}
@@ -478,7 +480,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: Layout.screenPadding,
-    paddingVertical: Spacing.lg,
+    paddingBottom: Spacing.lg,
   },
   backBtn: { padding: Spacing.xs },
   backIcon: { fontSize: 22, color: Colors.text },

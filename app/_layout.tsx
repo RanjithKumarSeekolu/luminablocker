@@ -1,11 +1,19 @@
 import FoundationOfFocusScreen from "@/components/FoundationOfFocusScreen";
 import LuminaSplashScreen from "@/components/Luminasplashscreen";
+import OnboardingScreen from "@/components/OnboardingScreen";
 import {
   canDrawOverlays,
   hasUsagePermission,
   isAccessibilityEnabled,
 } from "@/modules/lumina-blocker";
 import { initLuminaStore } from "@/store/luminaStore";
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_600SemiBold,
+  DMSans_700Bold,
+} from "@expo-google-fonts/dm-sans";
+import { DMSerifDisplay_400Regular } from "@expo-google-fonts/dm-serif-display";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -18,7 +26,7 @@ export { ErrorBoundary } from "expo-router";
 
 SplashScreen.preventAutoHideAsync();
 
-type Stage = "splash" | "permissions" | "app";
+type Stage = "splash" | "onboarding" | "permissions" | "app";
 
 function allPermissionsGranted() {
   return isAccessibilityEnabled() && canDrawOverlays() && hasUsagePermission();
@@ -27,6 +35,11 @@ function allPermissionsGranted() {
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+    DMSerifDisplay_400Regular,
     ...FontAwesome.font,
   });
 
@@ -78,7 +91,7 @@ function RootLayoutNav() {
     if (stage !== "splash") return;
 
     const timer = setTimeout(() => {
-      transitionTo(hasPermissions ? "app" : "permissions");
+      transitionTo(hasPermissions ? "app" : "onboarding");
     }, 2200);
 
     return () => clearTimeout(timer);
@@ -101,6 +114,12 @@ function RootLayoutNav() {
   switch (stage) {
     case "splash":
       content = <LuminaSplashScreen showOnboardingDots={!hasPermissions} />;
+      break;
+
+    case "onboarding":
+      content = (
+        <OnboardingScreen onComplete={() => transitionTo("permissions")} />
+      );
       break;
 
     case "permissions":

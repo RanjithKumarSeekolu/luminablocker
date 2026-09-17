@@ -1,6 +1,9 @@
 import { Colors, Radius, Spacing, Typography } from "@/constants/theme";
 import { formatUsage, getCurrentTimeSlot, getGreeting } from "@/constants/utils";
-import { DailySnapshot } from "@/modules/lumina-blocker";
+import {
+  DailySnapshot,
+  isFocusModeActive,
+} from "@/modules/lumina-blocker";
 import { fetchAiInsights, type AiInsight } from "@/services/aiInsights";
 import { getStore, refreshLuminaStore, subscribe } from "@/store/luminaStore";
 import { Ionicons } from "@expo/vector-icons";
@@ -375,6 +378,66 @@ function FocusTargets({ targets }: { targets: AppFocusData[] }) {
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
+function getReflectSubtitle({
+  todayFocusMs,
+  yesterdayFocusMs,
+  snapshot,
+  targets,
+  focusActive,
+}: {
+  todayFocusMs: number;
+  yesterdayFocusMs: number;
+  snapshot: DailySnapshot | null;
+  targets: AppFocusData[];
+  focusActive: boolean;
+}): string {
+  if (focusActive) {
+    return "Focus mode is on. Stay with it.";
+  }
+
+  if (targets.length === 0) {
+    return "Pick a few apps and Lumina will start tracking your pauses.";
+  }
+
+  const focusMinutes = Math.round(todayFocusMs / 60000);
+  if (todayFocusMs > 0 && yesterdayFocusMs > 0 && todayFocusMs > yesterdayFocusMs) {
+    return `More focused than yesterday — ${formatUsage(todayFocusMs)} so far.`;
+  }
+  if (focusMinutes >= 45) {
+    return `${formatUsage(todayFocusMs)} of focus so far. A strong day taking shape.`;
+  }
+  if (todayFocusMs > 0) {
+    return `${formatUsage(todayFocusMs)} of focus so far.`;
+  }
+
+  const exits = snapshot?.intentionalExits ?? 0;
+  if (exits > 0) {
+    return exits === 1
+      ? "You stepped back once today."
+      : `You stepped back ${exits} times today.`;
+  }
+
+  const pauses = snapshot?.overlaysTriggered ?? 0;
+  if (pauses > 0) {
+    return pauses === 1
+      ? "Lumina paused you once today."
+      : `Lumina paused you ${pauses} times today.`;
+  }
+
+  const busiest = [...targets]
+    .filter((target) => target.usageMs > 0)
+    .sort((a, b) => b.usageMs - a.usageMs)[0];
+  if (busiest) {
+    return `${busiest.appName} is the strongest pull today.`;
+  }
+
+  const slot = getCurrentTimeSlot();
+  if (slot === "early") return "A quiet start. Begin whenever you're ready.";
+  if (slot === "work") return "The day is still open.";
+  if (slot === "evening") return "An evening pause still counts.";
+  return "Wind down when you're ready.";
+}
+
 export default function Reflect() {
   const [data, setData] = useState(getStore());
   const [aiInsights, setAiInsights] = useState<AiInsight[]>([]);
@@ -455,6 +518,20 @@ export default function Reflect() {
   }, [refresh]);
 
   const greeting = getGreeting();
+  const yesterdayFocusMs = data.weeklyFocusData?.[1]?.totalMs ?? 0;
+  let focusActive = false;
+  try {
+    focusActive = isFocusModeActive();
+  } catch {
+    focusActive = false;
+  }
+  const subtitle = getReflectSubtitle({
+    todayFocusMs: data.todayFocusMs,
+    yesterdayFocusMs,
+    snapshot: data.snapshot,
+    targets: data.focusTargets,
+    focusActive,
+  });
 
   return (
     <View style={styles.container}>
@@ -469,7 +546,7 @@ export default function Reflect() {
             Good {greeting}.
           </Text>
           <Text style={styles.greetingSubtitle}>
-            You've been mindful today.
+            {subtitle}
           </Text>
           <Text style={styles.focusLabel}>TOTAL FOCUS TODAY</Text>
           <Text style={styles.focusTime}>{formatUsage(data.todayFocusMs)}</Text>

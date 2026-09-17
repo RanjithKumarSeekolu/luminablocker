@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const BG = "#0B0B0D";
 const CARD = "#171719";
@@ -55,6 +56,7 @@ function getSectionLabel(date: Date) {
 }
 
 export default function FocusHistoryScreen() {
+  const insets = useSafeAreaInsets();
   const [sessions, setSessions] = useState<FocusSession[]>([]);
   const [filter, setFilter] = useState<FilterType>("week");
 
@@ -124,7 +126,13 @@ export default function FocusHistoryScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 40,
+        },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.title}>Recent Sessions</Text>

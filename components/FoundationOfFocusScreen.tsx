@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Colors,
   Layout,
@@ -66,6 +67,7 @@ export default function FoundationOfFocusScreen({
 }: {
   onAllGranted?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [granted, setGranted] = useState<Set<string>>(getGranted);
 
   // Re-check whenever user returns from system settings
@@ -83,7 +85,12 @@ export default function FoundationOfFocusScreen({
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + Layout.screenPadding },
+        ]}
+      >
         <Text style={styles.logo}>Lumina</Text>
         <Text style={styles.heading}>Foundation of Focus</Text>
         <Text style={styles.subtext}>
@@ -125,7 +132,11 @@ export default function FoundationOfFocusScreen({
       </ScrollView>
 
       <TouchableOpacity
-        style={[styles.btn, allGranted && styles.btnActive]}
+        style={[
+          styles.btn,
+          allGranted && styles.btnActive,
+          { marginBottom: Math.max(insets.bottom, 16) },
+        ]}
         disabled={!allGranted}
         onPress={() => allGranted && onAllGranted?.()}
       >

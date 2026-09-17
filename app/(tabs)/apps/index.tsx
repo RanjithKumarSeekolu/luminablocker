@@ -65,6 +65,79 @@ type WeeklyUsageDay = { day: string; usageMs: number };
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_NAMES: Record<string, string> = {
+  Sun: "Sunday",
+  Mon: "Monday",
+  Tue: "Tuesday",
+  Wed: "Wednesday",
+  Thu: "Thursday",
+  Fri: "Friday",
+  Sat: "Saturday",
+};
+
+type ChartInsight = {
+  prefix: string;
+  highlight?: string;
+  suffix?: string;
+};
+
+function weeklyTotal(
+  packageName: string,
+  weeklyUsageMap: Record<string, WeeklyUsageDay[]>,
+): number {
+  return (weeklyUsageMap[packageName] ?? []).reduce(
+    (sum, day) => sum + day.usageMs,
+    0,
+  );
+}
+
+function buildChartInsight(
+  weeklyData: WeeklyUsageDay[],
+  options: {
+    filteredApp?: string;
+    leadingApp?: string | null;
+    todaySlot?: string;
+  },
+): ChartInsight | null {
+  const peakDay = weeklyData.reduce<WeeklyUsageDay | null>((best, day) => {
+    if (!best || day.usageMs > best.usageMs) return day;
+    return best;
+  }, null);
+
+  if (peakDay && peakDay.usageMs > 0) {
+    const dayName = DAY_NAMES[peakDay.day] ?? peakDay.day;
+    const amount = formatUsage(peakDay.usageMs);
+    if (options.filteredApp) {
+      return {
+        prefix: "You used ",
+        highlight: options.filteredApp,
+        suffix: ` most on ${dayName} · ${amount}.`,
+      };
+    }
+    if (options.leadingApp) {
+      return {
+        prefix: "",
+        highlight: options.leadingApp,
+        suffix: ` led this week. ${dayName} was the heaviest day · ${amount}.`,
+      };
+    }
+    return {
+      prefix: `${dayName} was your heaviest day this week · ${amount}.`,
+    };
+  }
+
+  if (options.todaySlot && options.todaySlot !== "—") {
+    const name = options.filteredApp ?? options.leadingApp;
+    if (!name) return null;
+    return {
+      prefix: "Today, ",
+      highlight: name,
+      suffix: ` peaked during the ${options.todaySlot.toLowerCase()}.`,
+    };
+  }
+
+  return null;
+}
 
 function getPeakTime(breakdown: AppTarget["usageBreakdown"]): string {
   const slots = [
@@ -737,12 +810,24 @@ export default function UsageTimingsScreen() {
         return { day, usageMs: total };
       });
 
-  const peakTarget =
+  const leadingTarget =
     targets.length > 0
-      ? targets.reduce((a, b) => (b.usageMs > a.usageMs ? b : a))
+      ? targets.reduce((best, target) => {
+          const bestTotal =
+            weeklyTotal(best.packageName, weeklyUsageMap) || best.usageMs;
+          const targetTotal =
+            weeklyTotal(target.packageName, weeklyUsageMap) || target.usageMs;
+          return targetTotal > bestTotal ? target : best;
+        })
       : null;
-  const peakAppName = peakTarget?.appName ?? null;
-  const peakTime = peakTarget ? getPeakTime(peakTarget.usageBreakdown) : "—";
+
+  const chartInsight = buildChartInsight(chartWeeklyData, {
+    filteredApp: activeTarget?.appName,
+    leadingApp: leadingTarget?.appName ?? null,
+    todaySlot: (activeTarget ?? leadingTarget)
+      ? getPeakTime((activeTarget ?? leadingTarget)!.usageBreakdown)
+      : undefined,
+  });
 
   const focusWeeklyTotalMs = focusData.reduce((s, d) => s + d.totalMs, 0);
   const focusDaysWithData = focusData.filter((d) => d.totalMs > 0).length;
@@ -772,20 +857,20 @@ export default function UsageTimingsScreen() {
           <WeeklyChart weeklyData={chartWeeklyData} />
         </View>
 
-        {peakAppName && (
+        {chartInsight && (
           <View style={styles.insightPill}>
             <Ionicons
-              name="location-outline"
+              name="stats-chart-outline"
               size={16}
               color={C.green}
               style={{ marginTop: 1 }}
             />
             <Text style={styles.insightText}>
-              You&apos;re most likely to use{" "}
-              <Text style={{ color: C.green }}>{peakAppName}</Text>
-              {peakTime !== "—"
-                ? ` during the ${peakTime.toLowerCase()} period.`
-                : "."}
+              {chartInsight.prefix}
+              {chartInsight.highlight ? (
+                <Text style={{ color: C.green }}>{chartInsight.highlight}</Text>
+              ) : null}
+              {chartInsight.suffix}
             </Text>
           </View>
         )}
