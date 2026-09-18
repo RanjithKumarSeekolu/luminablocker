@@ -1,3 +1,4 @@
+import { AccessibilityDisclosure } from "@/components/AccessibilityDisclosure";
 import {
   addBlockedAppListener,
   canDrawOverlays,
@@ -6,7 +7,6 @@ import {
   getInstalledApps,
   hasUsagePermission,
   isAccessibilityEnabled,
-  openAccessibilitySettings,
   openOverlaySettings,
   openUsageAccessSettings,
   saveBlockedApps,
@@ -357,6 +357,8 @@ export default function AddDistractingAppScreen({
   const [overlayOk, setOverlayOk] = useState(canDrawOverlays);
   const [usageOk, setUsageOk] = useState(hasUsagePermission);
   const [saving, setSaving] = useState(false);
+  const [showAccessibilityDisclosure, setShowAccessibilityDisclosure] =
+    useState(false);
   const toastAnim = useRef(new Animated.Value(0)).current;
 
   // Deduplicate helper
@@ -434,7 +436,7 @@ export default function AddDistractingAppScreen({
   const handleDone = async () => {
     if (saving) return;
     if (!accessibilityOn) {
-      openAccessibilitySettings();
+      setShowAccessibilityDisclosure(true);
       return;
     }
     if (!overlayOk) {
@@ -557,7 +559,7 @@ export default function AddDistractingAppScreen({
       {!accessibilityOn && (
         <TouchableOpacity
           style={[styles.banner, { borderColor: "#FF950055" }]}
-          onPress={openAccessibilitySettings}
+          onPress={() => setShowAccessibilityDisclosure(true)}
         >
           <Text style={[styles.bannerTitle, { color: "#FF9500" }]}>
             Accessibility permission required
@@ -685,6 +687,10 @@ export default function AddDistractingAppScreen({
           {selectedIds.size} app{selectedIds.size !== 1 ? "s" : ""} saved ✓
         </Text>
       </Animated.View>
+      <AccessibilityDisclosure
+        visible={showAccessibilityDisclosure}
+        onClose={() => setShowAccessibilityDisclosure(false)}
+      />
     </View>
   );
 }

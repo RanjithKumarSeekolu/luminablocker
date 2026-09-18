@@ -1,8 +1,8 @@
+import { AccessibilityDisclosure } from "@/components/AccessibilityDisclosure";
 import {
   canDrawOverlays,
   hasUsagePermission,
   isAccessibilityEnabled,
-  openAccessibilitySettings,
   openOverlaySettings,
   openUsageAccessSettings,
 } from "@/modules/lumina-blocker";
@@ -31,7 +31,6 @@ const permissions = [
     id: "accessibility",
     title: "Accessibility",
     desc: "Senses when distracting apps are opened, allowing for mindful pauses.",
-    open: openAccessibilitySettings,
     check: isAccessibilityEnabled,
   },
   {
@@ -69,6 +68,8 @@ export default function FoundationOfFocusScreen({
 }) {
   const insets = useSafeAreaInsets();
   const [granted, setGranted] = useState<Set<string>>(getGranted);
+  const [showAccessibilityDisclosure, setShowAccessibilityDisclosure] =
+    useState(false);
 
   // Re-check whenever user returns from system settings
   useEffect(() => {
@@ -104,7 +105,14 @@ export default function FoundationOfFocusScreen({
             <TouchableOpacity
               key={p.id}
               style={[styles.card, isGranted && styles.cardGranted]}
-              onPress={() => !isGranted && p.open()}
+              onPress={() => {
+                if (isGranted) return;
+                if (p.id === "accessibility") {
+                  setShowAccessibilityDisclosure(true);
+                  return;
+                }
+                if ("open" in p) p.open();
+              }}
               activeOpacity={isGranted ? 1 : 0.75}
             >
               <View
@@ -144,6 +152,10 @@ export default function FoundationOfFocusScreen({
           BEGIN JOURNEY
         </Text>
       </TouchableOpacity>
+      <AccessibilityDisclosure
+        visible={showAccessibilityDisclosure}
+        onClose={() => setShowAccessibilityDisclosure(false)}
+      />
     </View>
   );
 }

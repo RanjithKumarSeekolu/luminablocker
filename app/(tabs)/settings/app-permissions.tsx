@@ -1,3 +1,4 @@
+import { AccessibilityDisclosure } from "@/components/AccessibilityDisclosure";
 import {
   canDrawOverlays,
   hasUsagePermission,
@@ -91,8 +92,8 @@ const PERMISSIONS: Permission[] = [
     id: "accessibility",
     icon: "⏰",
     title: "Accessibility Access",
-    tag: { label: "REQUIRED FOR TRACKING", color: Colors.success },
-    desc: "Allows Lumina's accessibility service to identify foreground apps and apply your focus boundaries.",
+    tag: { label: "NEEDED TO PAUSE APPS", color: Colors.success },
+    desc: "Allows Lumina to notice when an app you selected comes to the foreground so it can show a pause overlay or keep Focus Mode on. Lumina does not read screen content.",
     check: isAccessibilityEnabled,
     openGrant: openAccessibilitySettings,
     openRevoke: () =>
@@ -150,9 +151,11 @@ function PermissionIcon({ icon }: { icon: string }) {
 function PermissionCard({
   permission,
   granted,
+  onGrant,
 }: {
   permission: Permission;
   granted: boolean;
+  onGrant: () => void;
 }) {
   return (
     <View style={[styles.card, granted && styles.cardGranted]}>
@@ -176,7 +179,7 @@ function PermissionCard({
 
               {/* Action button — opens correct settings page */}
               <TouchableOpacity
-                onPress={granted ? permission.openRevoke : permission.openGrant}
+                onPress={granted ? permission.openRevoke : onGrant}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
                 <Text
@@ -218,6 +221,8 @@ export default function PermissionsScreen({ onBack }: { onBack?: () => void }) {
   }, []);
 
   const [granted, setGranted] = useState<Set<string>>(getGrantedSet);
+  const [showAccessibilityDisclosure, setShowAccessibilityDisclosure] =
+    useState(false);
 
   // Re-check every time the user returns from a settings page
   useEffect(() => {
@@ -252,6 +257,13 @@ export default function PermissionsScreen({ onBack }: { onBack?: () => void }) {
               key={p.id}
               permission={p}
               granted={granted.has(p.id)}
+              onGrant={() => {
+                if (p.id === "accessibility") {
+                  setShowAccessibilityDisclosure(true);
+                  return;
+                }
+                p.openGrant();
+              }}
             />
           ))}
         </View>
@@ -261,6 +273,10 @@ export default function PermissionsScreen({ onBack }: { onBack?: () => void }) {
           {`"Privacy is not an option, and it\nshouldn't be the price we pay for just\ngetting on the internet."`}
         </Text>
       </ScrollView>
+      <AccessibilityDisclosure
+        visible={showAccessibilityDisclosure}
+        onClose={() => setShowAccessibilityDisclosure(false)}
+      />
     </View>
   );
 }
