@@ -2,8 +2,10 @@ import { Colors, Layout, Radius, Spacing, Typography } from "@/constants/theme";
 import {
   isMindfulRemindersEnabled,
   isOverlayEnabled,
+  isCallsAllowed,
   isVolumeExitAllowed,
   setMindfulRemindersEnabled,
+  setCallsAllowed,
   setIsVolumeExitAllowed,
   setOverlayEnabled,
 } from "@/modules/lumina-blocker";
@@ -128,6 +130,7 @@ export default function SettingsScreen() {
   const [blockerOverlay, setBlockerOverlay] = useState(() =>
     isOverlayEnabled(),
   );
+  const [allowCalls, setAllowCalls] = useState(() => isCallsAllowed());
 
   // Re-read native preferences after returning from Privacy Vault or another
   // screen that may have changed the settings.
@@ -136,6 +139,7 @@ export default function SettingsScreen() {
       setMindfulReminders(readMindfulReminders());
       setFocusModeExitButton(isVolumeExitAllowed());
       setBlockerOverlay(isOverlayEnabled());
+      setAllowCalls(isCallsAllowed());
     }, []),
   );
 
@@ -151,6 +155,11 @@ export default function SettingsScreen() {
   const handleFocusModeExitToggle = (value: boolean) => {
     setFocusModeExitButton(value);
     setIsVolumeExitAllowed(value);
+  };
+
+  const handleAllowCallsToggle = (value: boolean) => {
+    setAllowCalls(value);
+    setCallsAllowed(value);
   };
 
   const handleBlockerOverlayToggle = (value: boolean) => {
@@ -190,6 +199,13 @@ export default function SettingsScreen() {
               "Darkness is the soul's sanctuary."
             </Text>
           }
+        />
+        <View style={styles.cardDivider} />
+        <ToggleRow
+          title="Allow Phone Calls"
+          subtitle="Let incoming calls through during focus mode."
+          value={allowCalls}
+          onValueChange={handleAllowCallsToggle}
         />
         <View style={styles.cardDivider} />
         <ToggleRow

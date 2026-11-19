@@ -129,7 +129,7 @@ class LuminaFocusService : Service() {
         enforcementRunnable = object : Runnable {
             override fun run() {
                 if (!isActive) return
-                if (FocusLockActivity.isVisible || !FocusLockActivity.allowRelaunch()) {
+                if (LuminaFocusConfig.CALL_SCREEN_ACTIVE || FocusLockActivity.isVisible || !FocusLockActivity.allowRelaunch()) {
                     enforcementHandler.postDelayed(this, 800)
                     return
                 }

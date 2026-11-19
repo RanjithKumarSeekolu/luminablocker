@@ -376,6 +376,15 @@ class LuminaBlockerModule : Module() {
             null
         }
 
+        Function("isCallsAllowed") {
+            prefs().getBoolean("callsAllowed", true)
+        }
+
+        Function("setCallsAllowed") { allowed: Boolean ->
+            prefs().edit().putBoolean("callsAllowed", allowed).apply()
+            null
+        }
+
         Function("isOverlayEnabled") {
             prefs().getBoolean("overlayEnabled", true)
         }

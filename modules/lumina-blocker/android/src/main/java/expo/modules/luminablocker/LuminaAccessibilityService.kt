@@ -36,6 +36,19 @@ class LuminaAccessibilityService : AccessibilityService() {
         Log.d(TAG, "✅ Service connected")
     }
 
+    private fun callsAllowed(ctx: Context) =
+        ctx.getSharedPreferences("LuminaPrefs", Context.MODE_PRIVATE)
+            .getBoolean("callsAllowed", true)
+
+    // Incoming/in-progress call UI: the dialer's in-call activity, or any
+    // "incallui" package (OEM variants such as Realme/Oppo).
+    private fun isCallScreen(ctx: Context, pkg: String, className: String): Boolean {
+        if (pkg.contains("incallui")) return true
+        val dialer = ctx.getSystemService(android.telecom.TelecomManager::class.java)
+            ?.defaultDialerPackage
+        return pkg == dialer && className.contains("incall", ignoreCase = true)
+    }
+
     private fun relaunchFocusActivity(ctx: Context) {
         val intent = Intent(ctx, FocusLockActivity::class.java).apply {
             addFlags(
@@ -54,7 +67,22 @@ class LuminaAccessibilityService : AccessibilityService() {
         val pkg = event?.packageName?.toString() ?: return
 
         // Allow only our own package
-        if (pkg == ctx.packageName) return
+        if (pkg == ctx.packageName) {
+            LuminaFocusConfig.CALL_SCREEN_ACTIVE = false
+            return
+        }
+
+        // Let the in-call screen through while a call is in progress.
+        if (callsAllowed(ctx) && isCallScreen(ctx, pkg, event.className?.toString() ?: "")) {
+            LuminaFocusConfig.CALL_SCREEN_ACTIVE = true
+            return
+        }
+        if (LuminaFocusConfig.CALL_SCREEN_ACTIVE) {
+            // System UI (status bar, heads-up) fires during a call; ignore it.
+            if (pkg == "com.android.systemui") return
+            // Anything else means the call screen is gone.
+            LuminaFocusConfig.CALL_SCREEN_ACTIVE = false
+        }
 
             // Block and relaunch for every other package including
             // systemui, keyguard, launcher, lock screen — everything
@@ -67,6 +95,7 @@ class LuminaAccessibilityService : AccessibilityService() {
             handler.postDelayed({
                 if (
                     LuminaFocusService.isActive &&
+                    !LuminaFocusConfig.CALL_SCREEN_ACTIVE &&
                     !FocusLockActivity.isVisible &&
                     FocusLockActivity.allowRelaunch()
                 ) {

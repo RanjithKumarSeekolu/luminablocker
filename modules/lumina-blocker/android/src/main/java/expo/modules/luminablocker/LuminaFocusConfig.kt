@@ -24,6 +24,9 @@ object LuminaFocusConfig {
 
     var ALLOW_VOLUME_EXIT = true
 
+    // True while the phone's in-call screen is allowed on top of focus mode.
+    @Volatile var CALL_SCREEN_ACTIVE = false
+
     val FOCUS_DURATION_LABELS = listOf(
         "15m",
         "25m",

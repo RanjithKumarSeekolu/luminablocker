@@ -635,6 +635,7 @@ class FocusLockActivity : Activity() {
     override fun onResume() {
         super.onResume()
         isVisible = true
+        LuminaFocusConfig.CALL_SCREEN_ACTIVE = false
         enforceLock()
     }
 

@@ -317,6 +317,14 @@ export function setIsVolumeExitAllowed(allowed: boolean): void {
   LuminaBlocker.setIsVolumeExitAllowed(allowed);
 }
 
+export function isCallsAllowed(): boolean {
+  return LuminaBlocker.isCallsAllowed();
+}
+
+export function setCallsAllowed(allowed: boolean): void {
+  LuminaBlocker.setCallsAllowed(allowed);
+}
+
 export function isOverlayEnabled(): boolean {
   return LuminaBlocker.isOverlayEnabled();
 }
